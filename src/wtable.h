@@ -34,9 +34,9 @@ typedef struct _WHEAD
 typedef struct _WSTATE
 {
     int  nworkers;
+    int  conn_total;
     int  app_id_max;
     int  msg_id_max;
-    int  conn_total;
     WORKER workers[W_WORKER_MAX];
     char dir[W_PATH_MAX];
 }WSTATE;

@@ -73,6 +73,7 @@ WTABLE *wtable_init(char *dir)
         }
         memset(wtab->state->workers, 0, sizeof(WORKER) * W_WORKER_MAX);
         wtab->state->nworkers = 0;
+        wtab->state->conn_total = 0;
         /* mmtrie */
         n = sprintf(path, "%s/%s", dir, WT_MAP_NAME);
         if((wtab->map = mmtrie_init(path)) == NULL) _exit(-1);
@@ -137,6 +138,7 @@ int wtable_appid(WTABLE *wtab, char *appkey, int len)
         appid = mmtrie_xadd(wtab->map, appkey, len);
         if(appid > wtab->state->app_id_max)
         {
+            wtab->state->app_id_max = appid;
             appid = mmtree64_new_tree(wtab->appmap);
         }
         MUTEX_UNLOCK(wtab->mutex);
