@@ -56,7 +56,7 @@ typedef struct _KMAP
     KMSTATE *state;
     KMNODE  *map;
     KMROOT  *roots;
-    MUTEX   *mutex;
+    MUTEX   mutex;
 }KMAP;
 void *kmap_init(char *basedir);
 int kmap_new_tree(void *kmap);

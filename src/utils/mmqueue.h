@@ -38,7 +38,7 @@ typedef struct _MMQUEUE
     off_t    size;
     off_t    old;
     void     *map;
-    MUTEX    *mutex;
+    MUTEX    mutex;
     MMQSTATE *state;
     MMQNODE  *nodes;
 }MMQUEUE;

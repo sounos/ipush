@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include "mmtree64.h"
 #include "mutex.h"
+#include "xmm.h"
 #define MMAP_SHARED MAP_SHARED|MAP_LOCKED
 #define MMT(px) ((MMTREE64 *)px)
 #define MMT_COLOR_BLACK  0
@@ -56,8 +57,8 @@ do                                                                              
         if((MMT(x)->start = (char *)mmap(NULL,MMT(x)->size,PROT_READ|PROT_WRITE,\
                     MMAP_SHARED, MMT(x)->fd, 0)) != (void *)-1)                  \
         {                                                                       \
-            MMT(x)->state = (MTSTATE64 *)MMT(x)->start;                           \
-            MMT(x)->map = (MMTNODE64 *)(MMT(x)->start + sizeof(MTSTATE64));          \
+            MMT(x)->state = (MMSTATE64 *)MMT(x)->start;                           \
+            MMT(x)->map = (MMTNODE64 *)(MMT(x)->start + sizeof(MMSTATE64));          \
         }                                                                       \
     }                                                                           \
 }while(0)
@@ -71,9 +72,9 @@ do                                                                              
         MMT(x)->end += (off_t)MMTREE64_INCRE_NUM * (off_t)sizeof(MMTNODE64);       \
         if(ftruncate(MMT(x)->fd, MMT(x)->end) == 0)                             \
         {                                                                       \
-            if(MMT(x)->old == sizeof(MTSTATE64))                                  \
+            if(MMT(x)->old == sizeof(MMSTATE64))                                  \
             {                                                                   \
-                memset(MMT(x)->state, 0, sizeof(MTSTATE64));                      \
+                memset(MMT(x)->state, 0, sizeof(MMSTATE64));                      \
                 MMT(x)->state->left += MMTREE64_INCRE_NUM - 1;                  \
             }                                                                   \
             else                                                                \
@@ -305,13 +306,13 @@ void *mmtree64_init(char *file)
         {
             MUTEX_INIT(MMT(x)->mutex);
             MMT(x)->end = st.st_size;
-            MMT(x)->size = (off_t)sizeof(MTSTATE64) + (off_t)sizeof(MMTNODE64) * (off_t)MMTREE64_NODES_MAX;
+            MMT(x)->size = (off_t)sizeof(MMSTATE64) + (off_t)sizeof(MMTNODE64) * (off_t)MMTREE64_NODES_MAX;
             //mmap
             MMT_MMAP(x);
             //init truncate
             if(st.st_size == 0)
             {
-                MMT(x)->end = (off_t)sizeof(MTSTATE64);
+                MMT(x)->end = (off_t)sizeof(MMSTATE64);
                 MMT_INCRE(x);
             }
             /* initialize mutexs  */
@@ -957,7 +958,7 @@ void mmtree64_close(void *x)
     int i = 0;
     if(x)
     {
-        //fprintf(stdout, "%s::%d start:%p state:%p map:%p current:%d left:%d total:%d qleft:%d qfirst:%d qlast:%d sizeof(MTSTATE64):%d\n", __FILE__, __LINE__, MMT(x)->start, MMT(x)->state, MMT(x)->map, MMT(x)->state->current, MMT(x)->state->left, MMT(x)->state->total, MMT(x)->state->qleft, MMT(x)->state->qfirst, MMT(x)->state->qlast, sizeof(MTSTATE64));
+        //fprintf(stdout, "%s::%d start:%p state:%p map:%p current:%d left:%d total:%d qleft:%d qfirst:%d qlast:%d sizeof(MMSTATE64):%d\n", __FILE__, __LINE__, MMT(x)->start, MMT(x)->state, MMT(x)->map, MMT(x)->state->current, MMT(x)->state->left, MMT(x)->state->total, MMT(x)->state->qleft, MMT(x)->state->qfirst, MMT(x)->state->qlast, sizeof(MMSTATE64));
         MMT_MUNMAP(x);
         MUTEX_DESTROY(MMT(x)->mutex);
 #ifdef HAVE_PTHREAD

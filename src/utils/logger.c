@@ -127,7 +127,7 @@ LOGGER *logger_init(char *file, int rotate_flag)
     struct timeval tv = {0};
     time_t timep = 0;
 
-    if((logger = (LOGGER *)calloc(1, sizeof(LOGGER))))
+    if((logger = (LOGGER *)xmm_mnew(sizeof(LOGGER))))
     {
         MUTEX_INIT(logger->mutex);
         strcpy(logger->file, file);
@@ -199,7 +199,7 @@ void logger_clean(void *ptr)
     {
         if(logger->fd) close(logger->fd);
         MUTEX_DESTROY(logger->mutex);
-        free(logger);
+        xmm_free(logger, sizeof(LOGGER));
     }
     return ;
 }

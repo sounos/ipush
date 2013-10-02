@@ -13,6 +13,7 @@
 #include "mqueue.h"
 #include "mmtree64.h"
 #include "mtree64.h"
+#include "mmtrie.h"
 #include "logger.h"
 #include "mutex.h"
 #include "xmm.h"
@@ -24,7 +25,6 @@
 #define WT_WDB_DIR          "wdb"
 #define WT_MAP_NAME         "worker.map"
 #define WT_APPMAP_NAME      "worker.appmap"
-#define WT_QUEUE_NAME       "worker.queue"
 /* 
  * initialize wtable 
  * */
@@ -77,19 +77,19 @@ WTABLE *wtable_init(char *dir)
         n = sprintf(path, "%s/%s", dir, WT_MAP_NAME);
         if((wtab->map = mmtrie_init(path)) == NULL) _exit(-1);
         /* appmap */
-        n = sprintf(path, "%s/%s", dir, WT_KMAP_NAME);
+        n = sprintf(path, "%s/%s", dir, WT_APPMAP_NAME);
         if((wtab->appmap = mmtree64_init(path)) == NULL) _exit(-1);
         /* logger & mutex & mtree & mqueue */
         wtab->mtree = mtree64_init();
         if((wtab->queue = mqueue_init()) == NULL) _exit(-1);
-        MMQ(wtab->queue)->logger = wtab->logger;
+        //MQ(wtab->queue)->logger = wtab->logger;
         MUTEX_INIT(wtab->mutex);
     }
     return wtab;
 }
 
 /* worker  init */
-int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid)
+int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status)
 {
     if(wtab && workerid >= 0 && workerid < W_WORKER_MAX && childid)
     {
@@ -97,6 +97,7 @@ int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid)
         wtab->state->workers[workerid].conn_qid = mtree64_new_tree(wtab->mtree);
         wtab->state->workers[workerid].task_qid = mqueue_new(wtab->queue);
         wtab->state->workers[workerid].childid = childid;
+        wtab->state->workers[workerid].running = status;
         MUTEX_INIT(wtab->state->workers[workerid].mmlock);
         DEBUG_LOGGER(wtab->logger, "init workers[%d] msg_qid[%d]",workerid,wtab->state->workers[workerid].msg_qid);
     }
@@ -121,7 +122,7 @@ int wtable_pop_task(WTABLE *wtab, int workerid)
 
     if(wtab && workerid >= 0 && workerid < W_WORKER_MAX)
     {
-        ret = mqueue_pop(wtab->queue, wtab->state->workers[workerid].task_qid);
+        mqueue_pop(wtab->queue, wtab->state->workers[workerid].task_qid, &ret);
     }
     return ret;
 }
@@ -147,9 +148,9 @@ int wtable_appid(WTABLE *wtab, char *appkey, int len)
 int wtable_appid_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id)
 {
     int appid = -1;
-    if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, char *appkey, int len)) > 0)     
+    if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, appkey, len)) > 0)     
     {
-        mtree64_inesrt(wtab->mtree, wtab->state->workers[workerid].conn_qid, appid, conn_id, NULL); 
+        mtree64_insert(wtab->mtree, wtab->state->workers[wid].conn_qid, appid, conn_id, NULL); 
     }
     return appid;
 }
@@ -157,22 +158,22 @@ int wtable_appid_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id)
 /* wtable new push msg */
 int wtable_new_msg(WTABLE *wtab, int appid, char *msg, char len)
 {
-    int msgid = 0, i = 0, id = 0;
+    int msgid = 0, mid = 0, i = 0, id = 0;
     struct timeval tv = {0};
     char buf[W_BUF_SIZE];
+    int64_t now = 0;
     WHEAD *head = (WHEAD *)buf;
-    uint64_t now = 0;
 
     if(wtab && appid > 0 && msg && len > 0)
     {
         msgid = ++(wtab->state->msg_id_max);
-        head.mix = appid;
-        head.len = len;
+        head->mix = appid;
+        head->len = len;
         strncpy(buf + sizeof(WHEAD), msg, len);
         db_set_data(wtab->mdb, msgid, buf, len + sizeof(WHEAD)); 
         gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
-        mid = (int )mmtree64_try_insert(wtab->appmap, appid, now, msgid, NULL);
-        for(i = 0; i < wtab->state->nworkers)
+        mid = (int)mmtree64_try_insert(wtab->appmap, appid, now, msgid, NULL);
+        for(i = 0; i < wtab->state->nworkers; i++)
         {
             mqueue_push(wtab->queue, wtab->state->workers[i].msg_qid, mid);
         }
@@ -188,8 +189,8 @@ int wtable_get_msg(WTABLE *wtab, int workerid, char **block)
 
     if(wtab && workerid > 0 && block)
     {
-        if((mid = mqueue_pop(wtab->queue, wtab->state->workers[i].msg_qid))
-                && mmtree64_get(wtab->appmap, (unsigned int )qid, &time, &msgid) )
+        if((mqueue_pop(wtab->queue, wtab->state->workers[workerid].msg_qid, &mid))
+                && mmtree64_get(wtab->appmap, (unsigned int )mid, &time, &msgid) )
         {
             ret = db_exists_block(wtab->mdb, msgid, block);
         }
@@ -203,7 +204,7 @@ int wtable_get_msgs(WTABLE *wtab, int appid, int64_t last_time, char ***blocks)
     int ret = 0, mid = 0, msgid = 0, n = 0;
     int64_t time = 0;
 
-    if(wtab && appid && last_time && block) 
+    if(wtab && appid && last_time && blocks) 
     {
         mid = mmtree64_max(wtab->appmap, appid, &time, &msgid);
         while(mid && time >= last_time && msgid > 0)
@@ -269,7 +270,7 @@ void wtable_close(WTABLE *wtab)
         wtab->state = NULL;
         db_clean(wtab->wdb);
         db_clean(wtab->mdb);
-        mqueue_clean(MMQ(wtab->queue));
+        mqueue_clean(MQ(wtab->queue));
         mmtrie_clean(wtab->map);
         mtree64_close(wtab->mtree);
         mmtree64_close(wtab->appmap);

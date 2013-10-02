@@ -38,11 +38,11 @@ typedef struct _MQUEUE
     off_t    size;
     off_t    old;
     void     *map;
-    MUTEX    *mutex;
+    MUTEX    mutex;
     MQSTATE *state;
     MQNODE  *nodes;
 }MQUEUE;
-MQUEUE *mqueue_init(char *qfile);
+MQUEUE *mqueue_init();
 int mqueue_new(MQUEUE *mmq);
 int mqueue_total(MQUEUE *mmq, int rootid);
 int mqueue_close(MQUEUE *mmq, int rootid);

@@ -14,14 +14,14 @@ MQUEUE *mqueue_init()
     struct stat st = {0};
     MQUEUE *mmq = NULL;
 
-    if(qfile && (mmq = (MQUEUE *)xmm_mnew(sizeof(MQUEUE))))
+    if((mmq = (MQUEUE *)xmm_mnew(sizeof(MQUEUE))))
     {
         MUTEX_INIT(mmq->mutex);
         mmq->size = sizeof(MQNODE) * MQ_NODE_MAX + sizeof(MQSTATE);
         if((mmq->map = mmap(NULL, mmq->size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_SHARED,
                         -1, 0)) == NULL || mmq->map == (void *)-1)
         {
-            fprintf(stderr, "mmap qfile:%s failed, %s\n", qfile, strerror(errno));
+            fprintf(stderr, "mmap failed, %s\n", strerror(errno));
             _exit(-1);
         }
         mmq->state = (MQSTATE *)mmq->map;

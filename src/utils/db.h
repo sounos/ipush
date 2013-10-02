@@ -49,7 +49,7 @@ typedef struct _XIO
     int     fd;
     int     bits;
     char    *map;
-    void    *mutex;
+    MUTEX   mutex;
     off_t   old;
     off_t   end;
     off_t   size;
@@ -87,10 +87,10 @@ typedef struct _DB
     int     block_max;
     off_t   mm_total;
     off_t   xx_total;
-    MUTEX   *mutex;
-    MUTEX   *mutex_lnk;
-    MUTEX   *mutex_dbx;
-    MUTEX   *mutex_mblock;
+    MUTEX   mutex;
+    MUTEX   mutex_lnk;
+    MUTEX   mutex_dbx;
+    MUTEX   mutex_mblock;
     void    *kmap;
     void    *logger;
     XSTATE  *state;

@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include "kmap.h"
 #include "mutex.h"
+#include "xmm.h"
 #ifdef MAP_LOCKED
 #define MMAP_SHARED MAP_SHARED|MAP_LOCKED
 #else
@@ -363,7 +364,7 @@ void *kmap_init(char *basedir)
     char path[256];
     int n = 0;
 
-    if(basedir && (x = (KMAP *)calloc(1, sizeof(KMAP))))
+    if(basedir && (x = (KMAP *)xmm_mnew(sizeof(KMAP))))
     {
         MUTEX_INIT(KMP(x)->mutex);
         n = sprintf(path, "%s/kmap.map", basedir); 
@@ -385,7 +386,7 @@ void *kmap_init(char *basedir)
         else 
         {
             if(KMP(x)->fd > 0) close(KMP(x)->fd);
-            free(x);
+            xmm_free(x, sizeof(KMAP));
             x = NULL;
             _exit(-1);
         }
@@ -406,7 +407,7 @@ void *kmap_init(char *basedir)
         else 
         {
             if(KMP(x)->rfd > 0) close(KMP(x)->rfd);
-            free(x);
+            xmm_free(x, sizeof(KMAP));
             x = NULL;
             _exit(-1);
         }

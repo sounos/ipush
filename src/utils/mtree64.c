@@ -8,7 +8,6 @@
 #include "mtree64.h"
 #include "mutex.h"
 #include "xmm.h"
-#define MAP_SHARED MAP_SHARED|MAP_LOCKED
 #define MT(px) ((MTREE64 *)px)
 #define MT_COLOR_BLACK  0
 #define MT_COLOR_RED    1

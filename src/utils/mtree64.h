@@ -48,12 +48,12 @@ typedef struct _MTREE64
     char    *start;
     MTSTATE64 *state;
     MTNODE64  *map;
-    MUTEX   *mutex;
+    MUTEX   mutex;
 #ifdef HAVE_PTHREAD
     pthread_mutex_t mutexs[MTREE64_MUTEX_MAX];
 #endif
 }MTREE64;
-void *mtree64_init(char *file);
+void *mtree64_init();
 int mtree64_new_tree(void *mtree);
 unsigned int mtree64_total(void *mtree, int rootid);
 unsigned int mtree64_try_insert(void *mtree, int rootid, int64_t key, int data, int *old);

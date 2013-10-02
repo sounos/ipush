@@ -22,7 +22,7 @@ typedef struct _MMROOT64
     unsigned int total;
     unsigned int rootid;
 }MMROOT64;
-typedef struct _MTSTATE64
+typedef struct _MMSTATE64
 {
     int64_t kmax;
     int64_t kmin;
@@ -37,7 +37,7 @@ typedef struct _MTSTATE64
     unsigned int qlast;
     unsigned int nroots;
     MMROOT64 roots[MMTREE64_ROOT_MAX];
-}MTSTATE64;
+}MMSTATE64;
 typedef struct _MMTREE64
 {
     int fd;
@@ -46,9 +46,9 @@ typedef struct _MMTREE64
     off_t end;
     off_t old;
     char    *start;
-    MTSTATE64 *state;
+    MMSTATE64 *state;
     MMTNODE64  *map;
-    MUTEX   *mutex;
+    MUTEX   mutex;
 #ifdef HAVE_PTHREAD
         pthread_mutex_t mutexs[MMTREE64_MUTEX_MAX];
 #endif

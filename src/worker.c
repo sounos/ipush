@@ -20,12 +20,10 @@
 #include <evbase.h>
 #include "common.h"
 #include "mmqueue.h"
-#include "table.h"
 #include "wtable.h"
 #include "logger.h"
 #include "xmm.h"
 static WTABLE *wtab = NULL;
-static TABLE *tab = NULL;
 static int running_status = 0;
 static int g_workerid = 0;
 static int g_main_worker = 0;
@@ -100,6 +98,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
             if(n <= 0) goto err;
             //if(conns[fd].cacheid == 0) conns[fd].cacheid = wtable_new_cacheid(wtab);
             /* check http request */ 
+            /*
             if((nblock = wtable_cache(wtab, fd, line, n, &block)) > 0
                 && (p = block) && nblock > 4 && memcmp(&(block[nblock - 4]), "\r\n\r\n", 4) == 0)
             {
@@ -120,9 +119,11 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 }
                 else goto err;
             }
+            */
         }
         if(ev_flags & E_WRITE)
         {
+            /*
             if((nblock = wtable_res_block(wtab, fd, &block)) > 0)
             {
                 DEBUG_LOGGER(logger,"ready for writting %d bytes to fd:%d", nblock, fd);
@@ -142,6 +143,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 }
             }
             else goto err;
+            */
         }
         return ;
 err:
@@ -157,7 +159,7 @@ err:
 void worker_running(int wid, int listenport)
 {
     WORKER *workers = wtab->state->workers;
-    int opt = 1, fd = 0, wid = 0;
+    int opt = 1, fd = 0;
     struct sockaddr_in sa;
     socklen_t sa_len = 0;
 
@@ -241,6 +243,7 @@ void worker_init(void *arg)
     int wid = (int)((long)arg), n = 0, total = 0;
     WORKER *workers = wtab->state->workers;
     char buf[W_BUF_SIZE], *req = NULL;
+    pid_t pid = 0;
 
     if(wid > 0 && wid < W_WORKER_MAX)
     {
@@ -250,9 +253,20 @@ void worker_init(void *arg)
         wtable_worker_init(wtab, wid, (int64_t)getpid(), W_RUN_WORKING);
 #endif
         g_workerid = wid;
+        if((pid = fork()) == 0)
+        {
+            if(setsid() == -1) exit(EXIT_FAILURE);
+            worker_running(wtab->state->nworkers++, port);                
+        }
+        if((pid = fork()) == 0)
+        {
+            if(setsid() == -1) exit(EXIT_FAILURE);
+            worker_running(wtab->state->nworkers++, port);                
+        }
+        /*
         do
         {
-            if(workers[wid].cmd == W_CMD_NEW)
+            if((taskid = wtable_pop_task(wtab, wid)))
             {
                 if((pid = fork()) == 0)
                 {
@@ -264,8 +278,9 @@ void worker_init(void *arg)
             }
             MUTEX_WAIT(workers[wid].mmlock);    
         }while(workers[wid].running == W_RUN_WORKING);
+        */
+        wtable_worker_terminate(wtab, wid);
     }
-    wtable_worker_terminate(wtab, wid);
 #ifdef USE_PTHREAD
     pthread_exit(NULL);
 #else
@@ -306,13 +321,12 @@ int main(int argc, char **argv)
     LOGGER_INIT(logger, log);
     if((wtab = wtable_init(workdir)))
     {
-        worker_init(1);
+        worker_init((void *)((long )1));
         if(g_main_worker)
         {
             DEBUG_LOGGER(logger, "ready for stopping %d workers", wtab->state->nworkers);
             wtable_stop(wtab);
             wtable_close(wtab);
-            if(tab) table_close(tab);
         }
     }
     else

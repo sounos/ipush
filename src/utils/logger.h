@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include "mutex.h"
+#include "xmm.h"
 #ifndef _LOGGER_H
 #define _LOGGER_H
 #ifdef __cplusplus
@@ -43,7 +44,7 @@ typedef struct _LOGGER
     int level;
     int bits;
     time_t uptime;
-    MUTEX *mutex;
+    MUTEX mutex;
     char file[LOGGER_PATH_MAX];
 }LOGGER;
 #endif

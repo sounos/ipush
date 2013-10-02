@@ -33,6 +33,9 @@ typedef struct _WHEAD
 typedef struct _WSTATE
 {
     int  nworkers;
+    int  app_id_max;
+    int  msg_id_max;
+    int  bits;
     WORKER workers[W_WORKER_MAX];
     char dir[W_PATH_MAX];
 }WSTATE;
@@ -40,6 +43,7 @@ typedef struct _WTABLE
 {
     int  statefd;
     int  bits;
+    MUTEX mutex;
     void *mdb;/* msg db */
     void *wdb;/* worker db */
     void *map;/* key/value map */
@@ -47,7 +51,6 @@ typedef struct _WTABLE
     void *mtree;/* mtree */
     void *queue;/* msg queue*/
     void *task_queue;/* task queue*/
-    void *mutex;
     void *logger;
     WSTATE *state; 
 }WTABLE;
