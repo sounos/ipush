@@ -14,6 +14,7 @@
 #define W_STATUS_ERR        -1
 #define W_STATUS_INIT       0
 #define W_PATH_MAX          256
+#define W_CONN_AVG          20480
 #define W_LINE_SIZE         8192
 #define W_BUF_SIZE          65536
 typedef struct _WORKER

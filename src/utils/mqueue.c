@@ -26,6 +26,7 @@ MQUEUE *mqueue_init()
         }
         mmq->state = (MQSTATE *)mmq->map;
         memset(mmq->state, 0, sizeof(MQSTATE));
+        mmq->end = sizeof(MQSTATE);
         mmq->nodes = (MQNODE *)((char *)mmq->map + sizeof(MQSTATE));
     }
     return mmq;

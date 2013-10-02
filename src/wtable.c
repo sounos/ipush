@@ -91,7 +91,7 @@ WTABLE *wtable_init(char *dir)
 /* worker  init */
 int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status)
 {
-    if(wtab && workerid >= 0 && workerid < W_WORKER_MAX && childid)
+    if(wtab && workerid > 0 && workerid < W_WORKER_MAX && childid)
     {
         wtab->state->workers[workerid].msg_qid = mqueue_new(wtab->queue);
         wtab->state->workers[workerid].conn_qid = mtree64_new_tree(wtab->mtree);
@@ -108,7 +108,7 @@ int wtable_new_task(WTABLE *wtab, int workerid, int taskid)
 {
     int ret = 0;
 
-    if(wtab && workerid >= 0 && workerid < W_WORKER_MAX)
+    if(wtab && workerid > 0 && workerid < W_WORKER_MAX)
     {
         mqueue_push(wtab->queue, wtab->state->workers[workerid].task_qid, taskid);
         MUTEX_SIGNAL(wtab->state->workers[workerid].mmlock);
@@ -120,7 +120,7 @@ int wtable_pop_task(WTABLE *wtab, int workerid)
 {
     int ret = -1;
 
-    if(wtab && workerid >= 0 && workerid < W_WORKER_MAX)
+    if(wtab && workerid > 0 && workerid < W_WORKER_MAX)
     {
         mqueue_pop(wtab->queue, wtab->state->workers[workerid].task_qid, &ret);
     }
@@ -224,7 +224,7 @@ int wtable_stop(WTABLE *wtab)
     if(wtab) 
     {
         DEBUG_LOGGER(wtab->logger, "ready for stopping %d workers", wtab->state->nworkers);
-        for(i = 0; i <= wtab->state->nworkers; i++)
+        for(i = 1; i <= wtab->state->nworkers; i++)
         {
             if(wtab->state->workers[i].running == W_RUN_WORKING)
             {

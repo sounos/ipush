@@ -72,7 +72,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
 {
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
-    char line[EV_BUF_SIZE], *req = NULL, *p = NULL, *end = NULL, *block = NULL;
+    char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL;
     int rfd = 0, n = 0, nreq = 0, nblock = 0;
 
     if(fd == listenfd)
@@ -86,6 +86,13 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 event_set(&(conns[rfd].event), rfd, E_READ|E_PERSIST,
                         (void *)&(conns[rfd].event), &ev_handler);
                 evbase->add(evbase, &(conns[rfd].event));
+                wtab->state->conn_total++;
+                fprintf(stdout, "%s::%d conn_total:%d\n", __FILE__, __LINE__, wtab->state->conn_total);
+                if(wtab->state->nworkers > 1 
+                        && (wtab->state->conn_total/(wtab->state->nworkers-1)) > W_CONN_AVG)
+                {
+                    wtable_new_task(wtab, g_main_worker, W_CMD_NEWPROC);
+                }
             }
         }
     }
@@ -94,55 +101,27 @@ void ev_handler(int fd, int ev_flags, void *arg)
         if(ev_flags & E_READ)
         {
             n = read(fd, line, EV_BUF_SIZE);
+            fprintf(stdout, "%s::%d read:%d\n", __FILE__, __LINE__, n);
             if(n <= 0) goto err;
-            //if(conns[fd].cacheid == 0) conns[fd].cacheid = wtable_new_cacheid(wtab);
-            /* check http request */ 
-            /*
-            if((nblock = wtable_cache(wtab, fd, line, n, &block)) > 0
-                && (p = block) && nblock > 4 && memcmp(&(block[nblock - 4]), "\r\n\r\n", 4) == 0)
+            line[n] = 0;
+            ss = s = line;
+            while((p = strchr(ss, '\n')))
             {
-                block[nblock - 4] = '\0';
-                DEBUG_LOGGER(logger,"read %d bytes from fd:%d", n, fd);
-                if(strcasestr(block, "Keep-Alive")) conns[fd].keepalive = 1; 
-                else conns[fd].keepalive = 0;
-                end = block + nblock;
-                while(p < end && *p != '?')++p;
-                if(*p == '?')
-                {
-                    req = ++p;
-                    while(p < end && *p != 0x20 && *p != '\r' && *p != '\n')++p;
-                    *p = '\0';
-                    nreq = p - req;  
-                    conns[fd].workerid = wtable_new_task(wtab, fd, req, nreq+1);
-                    if(strstr(req, "op=reload")) goto err;
+                if(strncmp(s, "{\"appid\":\"", 10) == 0)
+                {/* add appid */
+                    while(*s != '\0' && *s != '"') s++;
+                    if(*s == '"')
+                    {
+                        fprintf(stdout, "%s::%d appid:%s conn_total:%d\n", __FILE__, __LINE__, ss, wtab->state->conn_total);
+                        *s = '\0';
+                        wtable_appid(wtab, ss, s - ss);
+                    }
                 }
-                else goto err;
+                ss = s = ++p;
             }
-            */
         }
         if(ev_flags & E_WRITE)
         {
-            /*
-            if((nblock = wtable_res_block(wtab, fd, &block)) > 0)
-            {
-                DEBUG_LOGGER(logger,"ready for writting %d bytes to fd:%d", nblock, fd);
-                n = write(fd, block + conns[fd].out_off, nblock - conns[fd].out_off); 
-                if(n <= 0) goto err;
-                conns[fd].out_off += n;
-                if(conns[fd].out_off == nblock)
-                {
-                    wtable_over_work(wtab, conns[fd].workerid);
-                    //DEBUG_LOGGER(logger,"send %d/%d bytes keepalive:%d via fd:%d", conns[fd].out_off, conns[fd].keepalive, nblock, fd);
-                    if(!conns[fd].keepalive) 
-                    {
-                        DEBUG_LOGGER(logger,"close fd:%d", fd);
-                        goto err;
-                    }
-                    event_del(&conns[fd].event, E_WRITE); 
-                }
-            }
-            else goto err;
-            */
         }
         return ;
 err:
@@ -150,6 +129,7 @@ err:
         memset(&(conns[fd]), 0, sizeof(CONN));
         shutdown(fd, SHUT_RDWR);
         close(fd);
+        --(wtab->state->conn_total);
     }
     return ;
 }
@@ -161,6 +141,7 @@ void worker_running(int wid, int listenport)
     int opt = 1, fd = 0, taskid = 0;
     struct sockaddr_in sa;
     socklen_t sa_len = 0;
+    pid_t pid = 0;
 
 #ifdef USE_PTHREAD
         wtable_worker_init(wtab, wid, (int64_t)pthread_self(), W_RUN_WORKING);
@@ -168,6 +149,8 @@ void worker_running(int wid, int listenport)
         wtable_worker_init(wtab, wid, (int64_t)getpid(), W_RUN_WORKING);
 #endif
 
+    wtable_new_task(wtab, g_workerid, W_CMD_NEWPROC);
+    wtable_new_task(wtab, g_workerid, W_CMD_NEWPROC);
     /* network settting */
     memset(&sa, 0, sizeof(struct sockaddr_in));
     sa.sin_family = AF_INET;
@@ -191,6 +174,32 @@ void worker_running(int wid, int listenport)
         fprintf(stderr, "Binding failed, %s\n", strerror(errno));
         _exit(-1);
     }
+    fprintf(stdout, "%s:%d taskid:%d\n", __FILE__, __LINE__, taskid);
+    do
+    {
+        while((taskid = wtable_pop_task(wtab, g_workerid)) > 0)
+        {
+            if(taskid == W_CMD_NEWPROC)
+            {
+                if((pid = fork()) == 0)
+                {
+                    if(setsid() == -1) exit(EXIT_FAILURE);
+                    g_workerid = ++(wtab->state->nworkers);
+                    fprintf(stdout, "%s:%d taskid:%d workerid:%d\n", __FILE__, __LINE__, taskid, g_workerid);
+                    goto running;
+                }
+            }
+            else if(taskid == W_CMD_STOP) goto exit_running;
+        }
+        MUTEX_WAIT(workers[wid].mmlock);    
+    }while(workers[wid].running == W_RUN_WORKING);
+goto exit_running;
+running:
+#ifdef USE_PTHREAD
+        wtable_worker_init(wtab, g_workerid, (int64_t)pthread_self(), W_RUN_WORKING);
+#else
+        wtable_worker_init(wtab, g_workerid, (int64_t)getpid(), W_RUN_WORKING);
+#endif
     /* Listen */
     if(listen(listenfd, CONN_BACKLOG_MAX) != 0 )
     {
@@ -213,20 +222,27 @@ void worker_running(int wid, int listenport)
             {
                 if(taskid == W_CMD_STOP) goto stop;
             }
-        }while(running_status);
+        }while(wtab->state->workers[g_workerid].running);
 stop:
         event_destroy(&(conns[listenfd].event));
         evbase->clean(evbase);
     }
     close(listenfd);
+exit_running:
+    wtable_worker_terminate(wtab, g_workerid);
+#ifdef USE_PTHREAD
+    pthread_exit(NULL);
+#else
+    exit(0);
+#endif
     return ;
 }
 
 /* running worker */
 void worker_init(void *arg)
 {
-    int wid = (int)((long)arg), n = 0, total = 0, taskid = 0;
     WORKER *workers = wtab->state->workers;
+    int wid = (int)((long)arg), n = 0, total = 0, taskid = 0;
     char buf[W_BUF_SIZE], *req = NULL;
     pid_t pid = 0;
 
@@ -249,7 +265,7 @@ void worker_init(void *arg)
                         if(setsid() == -1) exit(EXIT_FAILURE);
                         g_workerid = ++(wtab->state->nworkers);
                         worker_running(g_workerid, port);                
-                        break;
+                        goto stop;
                     }
                 }
                 else if(taskid == W_CMD_STOP) goto stop;
@@ -299,7 +315,8 @@ int main(int argc, char **argv)
     if((wtab = wtable_init(workdir)))
     {
         g_workerid = g_main_worker = ++(wtab->state->nworkers); 
-        worker_init((void *)((long )g_workerid));
+        worker_running(g_workerid, port);
+        //worker_init((void *)((long )g_workerid));
         if(g_main_worker == g_workerid)
         {
             DEBUG_LOGGER(logger, "ready for stopping %d workers", wtab->state->nworkers);
