@@ -35,7 +35,7 @@ typedef struct _WSTATE
     int  nworkers;
     int  app_id_max;
     int  msg_id_max;
-    int  bits;
+    int  conn_total;
     WORKER workers[W_WORKER_MAX];
     char dir[W_PATH_MAX];
 }WSTATE;
@@ -56,5 +56,14 @@ typedef struct _WTABLE
 }WTABLE;
 WTABLE *wtable_init(char *dir);
 int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status);
+int wtable_new_task(WTABLE *wtab, int workerid, int taskid);
+int wtable_pop_task(WTABLE *wtab, int workerid);
+int wtable_appid(WTABLE *wtab, char *appkey, int len);
+int wtable_appid_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id);
+int wtable_new_msg(WTABLE *wtab, int appid, char *msg, char len);
+int wtable_get_msg(WTABLE *wtab, int workerid, char **block);
+int wtable_get_msgs(WTABLE *wtab, int appid, int64_t last_time, char ***blocks);
+int wtable_stop(WTABLE *wtab);
+int wtable_worker_terminate(WTABLE *wtab, int workerid);
 void wtable_close(WTABLE *wtab);
 #endif

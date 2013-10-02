@@ -39,7 +39,6 @@ typedef struct _CONN
     int workerid;
     int keepalive;
     int out_off;
-    int apps[CONN_APP_MAX];
     void *ssl;
     EVENT event;
 }CONN;
@@ -159,12 +158,16 @@ err:
 void worker_running(int wid, int listenport)
 {
     WORKER *workers = wtab->state->workers;
-    int opt = 1, fd = 0;
+    int opt = 1, fd = 0, taskid = 0;
     struct sockaddr_in sa;
     socklen_t sa_len = 0;
 
-    /* set main worker */
-    g_main_worker = 1;
+#ifdef USE_PTHREAD
+        wtable_worker_init(wtab, wid, (int64_t)pthread_self(), W_RUN_WORKING);
+#else
+        wtable_worker_init(wtab, wid, (int64_t)getpid(), W_RUN_WORKING);
+#endif
+
     /* network settting */
     memset(&sa, 0, sizeof(struct sockaddr_in));
     sa.sin_family = AF_INET;
@@ -206,30 +209,12 @@ void worker_running(int wid, int listenport)
         do
         {
             evbase->loop(evbase, 0, &tv);
-            /*
-            while((wid = wtable_pop_qover(wtab)) > 0)
+            while((taskid = wtable_pop_task(wtab, wid)) > 0)
             {
-                DEBUG_LOGGER(logger,"over-task wid:%d fd:%d",wid, workers[wid].fd);
-                if((fd = workers[wid].fd) > 0)
-                {
-                    if(fd > 0 && (conns[fd].workerid == wid))
-                    {
-                        conns[fd].out_off = 0;
-                        DEBUG_LOGGER(logger,"event wid:%d fd:%d",wid, workers[wid].fd);
-                        event_add(&(conns[fd].event), E_WRITE);
-                    }
-                    else
-                    {
-                        wtable_over_work(wtab, wid);
-                    }
-                }
-                else
-                {
-                    wtable_over_work(wtab, wid);
-                }
+                if(taskid == W_CMD_STOP) goto stop;
             }
-            */
         }while(running_status);
+stop:
         event_destroy(&(conns[listenfd].event));
         evbase->clean(evbase);
     }
@@ -240,7 +225,7 @@ void worker_running(int wid, int listenport)
 /* running worker */
 void worker_init(void *arg)
 {
-    int wid = (int)((long)arg), n = 0, total = 0;
+    int wid = (int)((long)arg), n = 0, total = 0, taskid = 0;
     WORKER *workers = wtab->state->workers;
     char buf[W_BUF_SIZE], *req = NULL;
     pid_t pid = 0;
@@ -252,41 +237,33 @@ void worker_init(void *arg)
 #else
         wtable_worker_init(wtab, wid, (int64_t)getpid(), W_RUN_WORKING);
 #endif
-        g_workerid = wid;
-        if((pid = fork()) == 0)
-        {
-            if(setsid() == -1) exit(EXIT_FAILURE);
-            worker_running(wtab->state->nworkers++, port);                
-        }
-        if((pid = fork()) == 0)
-        {
-            if(setsid() == -1) exit(EXIT_FAILURE);
-            worker_running(wtab->state->nworkers++, port);                
-        }
-        /*
+        wtable_new_task(wtab, wid, W_CMD_NEWPROC);
         do
         {
-            if((taskid = wtable_pop_task(wtab, wid)))
+            while((taskid = wtable_pop_task(wtab, wid)) > 0)
             {
-                if((pid = fork()) == 0)
+                if(taskid == W_CMD_NEWPROC)
                 {
-                    if(setsid() == -1) exit(EXIT_FAILURE);
-                    push_worker_running(port);                
-                    break;
+                    if((pid = fork()) == 0)
+                    {
+                        if(setsid() == -1) exit(EXIT_FAILURE);
+                        g_workerid = ++(wtab->state->nworkers);
+                        worker_running(g_workerid, port);                
+                        break;
+                    }
                 }
-                wtab->state->nworkers++;
+                else if(taskid == W_CMD_STOP) goto stop;
             }
             MUTEX_WAIT(workers[wid].mmlock);    
         }while(workers[wid].running == W_RUN_WORKING);
-        */
-        wtable_worker_terminate(wtab, wid);
+stop:
+        wtable_worker_terminate(wtab, g_workerid);
     }
 #ifdef USE_PTHREAD
     pthread_exit(NULL);
 #else
     exit(0);
 #endif
-
     return ;
 }
 
@@ -321,8 +298,9 @@ int main(int argc, char **argv)
     LOGGER_INIT(logger, log);
     if((wtab = wtable_init(workdir)))
     {
-        worker_init((void *)((long )1));
-        if(g_main_worker)
+        g_workerid = g_main_worker = ++(wtab->state->nworkers); 
+        worker_init((void *)((long )g_workerid));
+        if(g_main_worker == g_workerid)
         {
             DEBUG_LOGGER(logger, "ready for stopping %d workers", wtab->state->nworkers);
             wtable_stop(wtab);
@@ -334,6 +312,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "initialize wtable(%s) failed, %s\n", workdir, strerror(errno));
     }
     //DEBUG_LOGGER(logger, "ready for munmap(%p)", conns);
-    if(g_main_worker) xmm_free(conns, sizeof(CONN) * CONN_MAX);
+    if(g_main_worker == g_workerid) xmm_free(conns, sizeof(CONN) * CONN_MAX);
     return 0;
 }

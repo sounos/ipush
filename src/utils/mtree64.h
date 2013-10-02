@@ -1,7 +1,7 @@
 #ifndef _MTREE64_H
 #define _MTREE64_H
 #define MTREE64_INCRE_NUM    1000000
-#define MTREE64_NODES_MAX    2000000000
+#define MTREE64_NODES_MAX    200000000
 #define MTREE64_MUTEX_MAX    256
 #define MTREE64_ROOT_MAX     10240
 #include "mutex.h"

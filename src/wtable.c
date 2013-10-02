@@ -80,8 +80,8 @@ WTABLE *wtable_init(char *dir)
         n = sprintf(path, "%s/%s", dir, WT_APPMAP_NAME);
         if((wtab->appmap = mmtree64_init(path)) == NULL) _exit(-1);
         /* logger & mutex & mtree & mqueue */
-        wtab->mtree = mtree64_init();
         if((wtab->queue = mqueue_init()) == NULL) _exit(-1);
+        if((wtab->mtree = mtree64_init()) == NULL) _exit(-1);
         //MQ(wtab->queue)->logger = wtab->logger;
         MUTEX_INIT(wtab->mutex);
     }

@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <errno.h>
 #include "mtree64.h"
 #include "mutex.h"
 #include "xmm.h"
@@ -54,7 +55,7 @@ do                                                                              
     if(x)                                                                       \
     {                                                                           \
         if((MT(x)->start = (char *)mmap(NULL,MT(x)->size,PROT_READ|PROT_WRITE,\
-                    MAP_SHARED|MAP_ANON, -1, 0)) != (void *)-1)              \
+            MAP_ANON|MAP_SHARED, -1, 0)) != (void *)-1)              \
         {                                                                       \
             MT(x)->state = (MTSTATE64 *)MT(x)->start;                           \
             MT(x)->map = (MTNODE64 *)(MT(x)->start + sizeof(MTSTATE64));          \

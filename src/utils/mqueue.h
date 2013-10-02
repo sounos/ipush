@@ -21,7 +21,7 @@ typedef struct _MQROOT
     int last;
 }MQROOT;
 #define MQ_INCRE_NUM       1000000
-#define MQ_NODE_MAX        100000000
+#define MQ_NODE_MAX        200000000
 #define MQ_ROOT_MAX        5000000
 typedef struct _MQSTATE
 {
