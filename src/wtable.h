@@ -37,15 +37,13 @@ typedef struct _WSTATE
     int  conn_total;
     int  app_id_max;
     int  msg_id_max;
-    int  whitelist;
-    int  bits;
     WORKER workers[W_WORKER_MAX];
     char dir[W_PATH_MAX];
 }WSTATE;
 typedef struct _WTABLE
 {
     int  statefd;
-    int  bits;
+    int  whitelist;
     MUTEX mutex;
     void *mdb;/* msg db */
     void *wdb;/* worker db */

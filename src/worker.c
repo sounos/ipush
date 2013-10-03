@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <getopt.h> 
 #include <semaphore.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -39,8 +41,10 @@ typedef struct _CONN
     int workerid;
     int keepalive;
     int out_off;
+    ushort port;
+    ushort bit;
     int bits;
-    int ip;
+    char ip[16];
     void *ssl;
     EVENT event;
 }CONN;
@@ -48,6 +52,8 @@ static CONN *conns = NULL;
 static int listenfd = 0;
 static int port = 0;
 static int is_use_SSL = 0;
+static char *cert = NULL;
+static char *privkey = NULL;
 /* signal stop */
 static void worker_stop(int sig)
 {
@@ -69,7 +75,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
     char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL;
-    int rfd = 0, n = 0, nreq = 0, nblock = 0, appid = 0;
+    int rfd = 0, n = 0, nreq = 0, nblock = 0, appid = 0, msgid = 0;
     int64_t last = 0;
 
     if(fd == listenfd)
@@ -79,7 +85,9 @@ void ev_handler(int fd, int ev_flags, void *arg)
             while((rfd = accept(fd, (struct sockaddr *)&rsa, &rsa_len)) > 0)
             {
                 memset(&(conns[rfd]), 0, sizeof(CONN));
-                conns[rfd].ip = (int *)rsa.sin_addr.s_addr;
+                strcpy(conns[rfd].ip, inet_ntoa(rsa.sin_addr));
+                conns[rfd].port = ntohs(rsa.sin_port);
+                REALLOG(logger, "new connection[%s:%d] via %d", conns[rfd].ip, conns[rfd].port, rfd)
                 event_set(&(conns[rfd].event), rfd, E_READ|E_PERSIST,
                         (void *)&(conns[rfd].event), &ev_handler);
                 evbase->add(evbase, &(conns[rfd].event));
@@ -104,7 +112,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
             {
                 if(strncmp(s, "{\"appid\":\"", 10) == 0)
                 {
-                    if(wtable_check_whitelist(wtab, conns[fd].ip) > 0)
+                    if(wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
                     {/* check whitelist & add appid */
                         s += 10;
                         xs = s;
@@ -113,14 +121,19 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         {
                             *s = '\0';
                             appid = wtable_appid(wtab, xs, s - xs);
+                            REALLOG(logger, "new appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
                             *s = '"';
                         }
                     }
-                    else goto err;
+                    else 
+                    {
+                        WARN_LOGGER(logger, "no whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
+                        goto err;
+                    }
                 }
                 else if(strncmp(s, "{\"time\":\"", 9) == 0)
                 {
-                    if((s = strstr(s, "\"oauth_key\":\"")) && wtable_check_whitelist(wtab, conns[fd].ip) > 0)
+                    if((s = strstr(s, "\"oauth_key\":\"")) && wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
                     {/* check whitelist & add msg */
                         s += 11;
                         xs = s;
@@ -130,10 +143,16 @@ void ev_handler(int fd, int ev_flags, void *arg)
                             *s = '\0';
                             appid = wtable_appid(wtab, xs, s - xs);
                             *s = '"';
-                            msgid = wtable_new_msg(wtab, appid, ss, (p+1) - ss);
+                            n = (p+1) - ss;
+                            msgid = wtable_new_msg(wtab, appid, ss, n);
+                            REALLOG(logger, "new msg[%.*s] from conn[%s:%d] via %d", n, ss, conns[fd].ip, conns[fd].port, fd)
                         }
                     }
-                    else goto err;
+                    else 
+                    {
+                        WARN_LOGGER(logger, "no whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
+                        goto err;
+                    }
                 }
                 else if(strncmp(s, "{\"last\":\"", 9) == 0)
                 {
@@ -154,12 +173,20 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         if(*s == '"')
                         {
                             *s = '\0';
-                            if((appid = wtable_appid_auth(wtab, xs, s - xs)) < 1) goto err;
+                            if((appid = wtable_appid_auth(wtab, g_workerid, xs, s - xs, fd)) < 1) 
+                            {
+                                WARN_LOGGER(logger, "unknown appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
+                                goto err;
+                            }
                             /* set applist */
                             *s = '"';
                         }
                     }
-                    else goto err;
+                    else 
+                    {
+                        WARN_LOGGER(logger, "bad request[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd)
+                        goto err;
+                    }
                 }
                 else goto err;
                 ss = s = ++p;
@@ -220,7 +247,6 @@ void worker_running(int wid, int listenport)
         fprintf(stderr, "Binding failed, %s\n", strerror(errno));
         _exit(-1);
     }
-    //fprintf(stdout, "%s:%d taskid:%d\n", __FILE__, __LINE__, taskid);
     do
     {
         while((taskid = wtable_pop_task(wtab, g_workerid)) > 0)
@@ -231,7 +257,6 @@ void worker_running(int wid, int listenport)
                 {
                     if(setsid() == -1) exit(EXIT_FAILURE);
                     g_workerid = ++(wtab->state->nworkers);
-                    //fprintf(stdout, "%s:%d taskid:%d workerid:%d\n", __FILE__, __LINE__, taskid, g_workerid);
                     goto running;
                 }
             }
@@ -262,14 +287,11 @@ running:
         tv.tv_usec = 1000;
         do
         {
-        //fprintf(stdout, "%s::%d ok\n", __FILE__, __LINE__);
             evbase->loop(evbase, 0, &tv);
-        //fprintf(stdout, "%s::%d ok\n", __FILE__, __LINE__);
             while((taskid = wtable_pop_task(wtab, wid)) > 0)
             {
                 if(taskid == W_CMD_STOP) goto stop;
             }
-        //fprintf(stdout, "%s::%d ok:%d\n", __FILE__, __LINE__, wtab->state->workers[g_workerid].running);
         }while(wtab->state->workers[g_workerid].running);
 stop:
         event_destroy(&(conns[listenfd].event));
@@ -335,19 +357,80 @@ stop:
 //gcc -o w worker.c wtable.c table.c utils/*.c -I utils -g -lpthread -levbase -DUSE_PTHREAD && ./w 2188 /data/wtab
 int main(int argc, char **argv)
 {
-    char *workdir = NULL; 
-
-    while((ch = getopt(argc, argv, "c:d")) != (char)-1)
+    char log[256], *ss = NULL, *s = NULL, *workdir = NULL, *whitelist = NULL, 
+         c = 0, *short_options= "sdw:p:b:c:k:"; 
+    struct option long_options[] = {
+        {"ssl",0,NULL,'s'},
+        {"daemon",0,NULL,'d'},
+        {"workdir",1,NULL,'b'},
+        {"port",1,NULL,'p'},
+        {"whitelist",1,NULL,'w'},
+        {"cert",1,NULL,'c'},
+        {"privkey",1,NULL,'k'},
+        {NULL,0,NULL,0}
+    };
+    int is_run_daemon = 0, n = 0;
+    while((c = getopt_long(argc, argv, short_options, long_options, NULL)) != -1)  
+    {  
+        switch (c)  
+        {  
+            case 's':  
+#ifdef HAVE_SSL
+                is_use_SSL  = 1;
+#else
+                fprintf(stderr, "no SSL library found OR no compie option:-DHAVE_SSL\n");
+            _exit(-1);
+#endif
+                break;  
+            case 'd':  
+                is_run_daemon = 1;
+                break;
+            case 'b':  
+                workdir = optarg;
+                break;  
+            case 'p':  
+                port = atoi(optarg);
+                break;  
+            case 'w':  
+                whitelist = optarg;
+                break;  
+            case 'c':
+                cert = optarg;
+                break;  
+            case 'k':
+                privkey = optarg;
+                break;  
+            default :
+                break;
+        }  
+    } 
+    if(!port || !whitelist || !workdir || !cert || !privkey)
     {
-        if(ch == 'c') conf = optarg;
-        else if(ch == 'd') is_daemon = 1;
-    }
-    if(argc < 3 || (port = atoi(argv[1])) < 0 || port > 65536)
-    {
-        fprintf(stderr, "Usage:%s port[1024-65536] workdir\n", argv[0]);
+        fprintf(stderr, "Usage:%s --port=listenport\n"
+                "\t--whitelist=ip1,ip2,ip3...\n"
+                "\t--workdir=workdir\n"
+                "\t--cert=cert\n"
+                "\t--privkey=privkey\n"
+                "\t--ssl(use-ssl)\n"
+                "\t--daemon(run as daemon)\n", argv[0]);
         _exit(-1);
     }
-    workdir = argv[2];
+    if(is_run_daemon)
+    {
+        pid_t pid = fork();
+        switch (pid) {
+            case -1:
+                perror("fork()");
+                exit(EXIT_FAILURE);
+                break;
+            case 0: //child
+                if(setsid() == -1) exit(EXIT_FAILURE);
+                break;
+            default://parent
+                _exit(EXIT_SUCCESS);
+                break;
+        }
+    }
     /* locale */
     setlocale(LC_ALL, "C");
     /* signal */
@@ -358,17 +441,34 @@ int main(int argc, char **argv)
     signal(SIGCHLD, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
     //setrlimiter("RLIMIT_NOFILE", RLIMIT_NOFILE, CONN_MAX);
-    //fprintf(stdout, "sizeof(MUTEX):%d %d/%d\n", sizeof(MUTEX), sizeof(pthread_mutex_t), sizeof(pthread_cond_t));
-    //fprintf(stdout, "sizeof(CONN):%d\n", sizeof(CONN));
     conns = (CONN *)xmm_mnew(sizeof(CONN) * CONN_MAX);
     if(conns == NULL) exit(EXIT_FAILURE);
-    char *log = "/data/worker.log";
-    LOGGER_INIT(logger, log);
     if((wtab = wtable_init(workdir)))
     {
+        sprintf(log, "%s/run.log", workdir);
+        LOGGER_INIT(logger, log);
+        ss = s = whitelist;
+        while(*s != '\0')
+        {
+            if(*s == ',')
+            {
+                *s = '\0';
+                if((s - ss) > 0)
+                {
+                    wtable_set_whitelist(wtab, (int)inet_addr(ss));
+                    REALLOG(logger, "added whitelist:%s", ss);
+                }
+                ss = ++s;
+            }
+            else ++s;
+        }
+        if((s - ss) > 0)
+        {
+            wtable_set_whitelist(wtab, (int)inet_addr(ss));
+            REALLOG(logger, "added whitelist:%s", ss);
+        }
         g_workerid = g_main_worker = ++(wtab->state->nworkers); 
         worker_running(g_workerid, port);
-        //worker_init((void *)((long )g_workerid));
         if(g_main_worker == g_workerid)
         {
             DEBUG_LOGGER(logger, "ready for stopping %d workers", wtab->state->nworkers);

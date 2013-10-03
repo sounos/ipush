@@ -96,7 +96,7 @@ int wtable_set_whitelist(WTABLE *wtab, int ip)
     int ret = -1;
     if(wtab && ip)
     {
-        ret = mtree64_try_insert(wtab, wtab->whitelist, (int64_t)ip, ip, NULL);
+        ret = mtree64_try_insert(wtab->mtree, wtab->whitelist, (int64_t)ip, ip, NULL);
     }
     return ret;
 }
@@ -107,7 +107,7 @@ int wtable_check_whitelist(WTABLE *wtab, int ip)
     int ret = -1;
     if(wtab && ip)
     {
-        ret = mtree64_find(wtab, wtab->whitelist, (int64_t)ip, NULL);
+        ret = mtree64_find(wtab->mtree, wtab->whitelist, (int64_t)ip, NULL);
     }
     return ret;
 }
