@@ -72,3 +72,19 @@ int setrlimiter(char *name, int rlimit, int nset)
     }
     return ret;
 }
+
+int64_t strtotime64(char *strtime)
+{
+    struct tm tp = {0};
+    int64_t time = 0;
+    int msec = 0;
+    if(sscanf(datestr, "%d-%d-%dT%d:%d:%d.%dZ", &(tp.tm_year), &(tp.tm_mon),
+            &(tp.tm_mday),  &(tp.tm_hour), &(tp.tm_min), &(tp.tm_sec), &msec) == 7)
+    {
+        tp.tm_mon -= 1;
+        if(tp.tm_year > 1900) tp.tm_year -= 1900;
+        else if(tp.tm_year < 10) tp.tm_year += 100;
+        time = (int64_t)mktime(&tp) * 100000 + (int64_t)msec * 1000;
+    }
+    return time;
+}

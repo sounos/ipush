@@ -37,6 +37,8 @@ typedef struct _WSTATE
     int  conn_total;
     int  app_id_max;
     int  msg_id_max;
+    int  whitelist;
+    int  bits;
     WORKER workers[W_WORKER_MAX];
     char dir[W_PATH_MAX];
 }WSTATE;
@@ -56,6 +58,8 @@ typedef struct _WTABLE
     WSTATE *state; 
 }WTABLE;
 WTABLE *wtable_init(char *dir);
+int wtable_set_whitelist(WTABLE *wtab, int ip);
+int wtable_check_whitelist(WTABLE *wtab, int ip);
 int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status);
 int wtable_new_task(WTABLE *wtab, int workerid, int taskid);
 int wtable_pop_task(WTABLE *wtab, int workerid);

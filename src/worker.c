@@ -39,6 +39,8 @@ typedef struct _CONN
     int workerid;
     int keepalive;
     int out_off;
+    int bits;
+    int ip;
     void *ssl;
     EVENT event;
 }CONN;
@@ -66,8 +68,9 @@ void ev_handler(int fd, int ev_flags, void *arg)
 {
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
-    char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL;
-    int rfd = 0, n = 0, nreq = 0, nblock = 0;
+    char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL;
+    int rfd = 0, n = 0, nreq = 0, nblock = 0, appid = 0;
+    int64_t last = 0;
 
     if(fd == listenfd)
     {
@@ -76,12 +79,11 @@ void ev_handler(int fd, int ev_flags, void *arg)
             while((rfd = accept(fd, (struct sockaddr *)&rsa, &rsa_len)) > 0)
             {
                 memset(&(conns[rfd]), 0, sizeof(CONN));
-                //fcntl(rfd, F_SETFL, fcntl(rfd, F_GETFL, 0)|O_NONBLOCK);
+                conns[rfd].ip = (int *)rsa.sin_addr.s_addr;
                 event_set(&(conns[rfd].event), rfd, E_READ|E_PERSIST,
                         (void *)&(conns[rfd].event), &ev_handler);
                 evbase->add(evbase, &(conns[rfd].event));
                 ++(wtab->state->conn_total);
-                //fprintf(stdout, "%s::%d fd:%d conn_total:%d pid:%d\n", __FILE__, __LINE__, rfd, wtab->state->conn_total, getpid());
                 if(wtab->state->nworkers > 1 
                         && (wtab->state->conn_total/(wtab->state->nworkers-1)) > W_CONN_AVG)
                 {
@@ -101,17 +103,65 @@ void ev_handler(int fd, int ev_flags, void *arg)
             while((p = strchr(ss, '\n')))
             {
                 if(strncmp(s, "{\"appid\":\"", 10) == 0)
-                {/* add appid */
-                    s += 10;
-                    ss = s;
+                {
+                    if(wtable_check_whitelist(wtab, conns[fd].ip) > 0)
+                    {/* check whitelist & add appid */
+                        s += 10;
+                        xs = s;
+                        while(*s != '\0' && *s != '"') ++s;
+                        if(*s == '"')
+                        {
+                            *s = '\0';
+                            appid = wtable_appid(wtab, xs, s - xs);
+                            *s = '"';
+                        }
+                    }
+                    else goto err;
+                }
+                else if(strncmp(s, "{\"time\":\"", 9) == 0)
+                {
+                    if((s = strstr(s, "\"oauth_key\":\"")) && wtable_check_whitelist(wtab, conns[fd].ip) > 0)
+                    {/* check whitelist & add msg */
+                        s += 11;
+                        xs = s;
+                        while(*s != '\0' && *s != '"') ++s;
+                        if(*s == '"')
+                        {
+                            *s = '\0';
+                            appid = wtable_appid(wtab, xs, s - xs);
+                            *s = '"';
+                            msgid = wtable_new_msg(wtab, appid, ss, (p+1) - ss);
+                        }
+                    }
+                    else goto err;
+                }
+                else if(strncmp(s, "{\"last\":\"", 9) == 0)
+                {
+                    s += 9;
+                    xs = s;
                     while(*s != '\0' && *s != '"') ++s;
                     if(*s == '"')
                     {
                         *s = '\0';
-                        n = wtable_appid(wtab, ss, s - ss);
-                        //fprintf(stdout, "%s::%d appid:%s/%d conn_total:%d\n", __FILE__, __LINE__, ss,n, wtab->state->conn_total);
+                        last = strtotime64(s);
+                        *s = '"';
                     }
+                    if((s = strstr(s, "\"oauth_key\":\"")))
+                    {/* auth key  */
+                        s += 11;
+                        xs = s;
+                        while(*s != '\0' && *s != '"') ++s;
+                        if(*s == '"')
+                        {
+                            *s = '\0';
+                            if((appid = wtable_appid_auth(wtab, xs, s - xs)) < 1) goto err;
+                            /* set applist */
+                            *s = '"';
+                        }
+                    }
+                    else goto err;
                 }
+                else goto err;
                 ss = s = ++p;
             }
         }
@@ -286,7 +336,12 @@ stop:
 int main(int argc, char **argv)
 {
     char *workdir = NULL; 
-    
+
+    while((ch = getopt(argc, argv, "c:d")) != (char)-1)
+    {
+        if(ch == 'c') conf = optarg;
+        else if(ch == 'd') is_daemon = 1;
+    }
     if(argc < 3 || (port = atoi(argv[1])) < 0 || port > 65536)
     {
         fprintf(stderr, "Usage:%s port[1024-65536] workdir\n", argv[0]);

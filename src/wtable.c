@@ -83,12 +83,34 @@ WTABLE *wtable_init(char *dir)
         /* logger & mutex & mtree & mqueue */
         if((wtab->queue = mqueue_init()) == NULL) _exit(-1);
         if((wtab->mtree = mtree64_init()) == NULL) _exit(-1);
+        wtab->whitelist = mtree64_new_tree(wtab->mtree);
         //MQ(wtab->queue)->logger = wtab->logger;
         MUTEX_INIT(wtab->mutex);
     }
     return wtab;
 }
 
+/* add whitelist ip*/
+int wtable_set_whitelist(WTABLE *wtab, int ip)
+{
+    int ret = -1;
+    if(wtab && ip)
+    {
+        ret = mtree64_try_insert(wtab, wtab->whitelist, (int64_t)ip, ip, NULL);
+    }
+    return ret;
+}
+
+/* check whitelist */
+int wtable_check_whitelist(WTABLE *wtab, int ip)
+{
+    int ret = -1;
+    if(wtab && ip)
+    {
+        ret = mtree64_find(wtab, wtab->whitelist, (int64_t)ip, NULL);
+    }
+    return ret;
+}
 /* worker  init */
 int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status)
 {
