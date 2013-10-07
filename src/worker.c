@@ -15,6 +15,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#ifdef HAVE_SSL
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/crypto.h>
+#endif
 #include <signal.h>
 #include <locale.h>
 #include <pthread.h>
@@ -45,13 +50,18 @@ typedef struct _CONN
     ushort bit;
     int bits;
     char ip[16];
-    void *ssl;
+#ifdef HAVE_SSL
+    SSL *ssl;
+#endif
     EVENT event;
 }CONN;
 static CONN *conns = NULL;
 static int listenfd = 0;
 static int port = 0;
 static int is_use_SSL = 0;
+#ifdef HAVE_SSL
+static SSL_CTX *ctx = NULL;
+#endif
 static char *cert = NULL;
 static char *privkey = NULL;
 /* signal stop */
@@ -87,6 +97,34 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 memset(&(conns[rfd]), 0, sizeof(CONN));
                 strcpy(conns[rfd].ip, inet_ntoa(rsa.sin_addr));
                 conns[rfd].port = ntohs(rsa.sin_port);
+                if(is_use_SSL)
+                {
+#ifdef HAVE_SSL
+                    if((conns[rfd].ssl = SSL_new(ctx)) == NULL)
+                    {
+                        FATAL_LOGGER("SSL_new() failed, %s", (char *)ERR_reason_error_string(ERR_get_error()));
+                        shutdown(rfd, SHUT_RDWR);
+                        close(rfd);
+                        return ;
+                    }
+                    if(SSL_set_fd(conns[rfd].ssl, rfd) == 0)
+                    {
+                        ERR_print_errors_fp(stdout);
+                        shutdown(rfd, SHUT_RDWR);
+                        close(rfd);
+                        return ;
+                    }
+                    if((SSL_accept(conns[rfd].ssl)) <= 0)
+                    {
+                        FATAL_LOGGER("SSL_Accept connection %s:%d via %d failed, %s",
+                                inet_ntoa(rsa.sin_addr), ntohs(rsa.sin_port),
+                                rfd,  ERR_reason_error_string(ERR_get_error()));
+                        shutdown(rfd, SHUT_RDWR);
+                        close(rfd);
+                        return ;
+                    }
+#endif
+                }
                 REALLOG(logger, "new connection[%s:%d] via %d", conns[rfd].ip, conns[rfd].port, rfd)
                 event_set(&(conns[rfd].event), rfd, E_READ|E_PERSIST,
                         (void *)&(conns[rfd].event), &ev_handler);
@@ -104,7 +142,16 @@ void ev_handler(int fd, int ev_flags, void *arg)
     {
         if(ev_flags & E_READ)
         {
-            n = read(fd, line, EV_BUF_SIZE);
+            if(is_use_SSL)
+            {
+#ifdef HAVE_SSL
+                n = SSL_read(conns[fd].ssl, line, EV_BUF_SIZE);
+#endif
+            }
+            else
+            {
+                n = read(fd, line, EV_BUF_SIZE);
+            }
             if(n <= 0) goto err;
             line[n] = 0;
             ss = s = line;
@@ -198,6 +245,13 @@ void ev_handler(int fd, int ev_flags, void *arg)
         return ;
 err:
         event_destroy(&(conns[fd].event));
+#ifdef HAVE_SSL
+        if(conns[fd].ssl)
+        {   SSL_shutdown(conns[fd].ssl);
+            SSL_free(conns[fd].ssl);
+            conns[fd].ssl = NULL;
+        }
+#endif
         memset(&(conns[fd]), 0, sizeof(CONN));
         shutdown(fd, SHUT_RDWR);
         close(fd);
@@ -443,6 +497,38 @@ int main(int argc, char **argv)
     //setrlimiter("RLIMIT_NOFILE", RLIMIT_NOFILE, CONN_MAX);
     conns = (CONN *)xmm_mnew(sizeof(CONN) * CONN_MAX);
     if(conns == NULL) exit(EXIT_FAILURE);
+    
+#ifdef HAVE_SSL
+    if(is_use_SSL)
+    {
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();
+        SSL_load_error_strings();
+        if((ctx = SSL_CTX_new(SSLv23_server_method())) == NULL)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*load certificate */
+        if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*load private key file */
+        if (SSL_CTX_use_PrivateKey_file(ctx, privkey, SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*check private key file */
+        if (!SSL_CTX_check_private_key(ctx))
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+    }
+#endif
     if((wtab = wtable_init(workdir)))
     {
         sprintf(log, "%s/run.log", workdir);
