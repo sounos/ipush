@@ -49,7 +49,7 @@ binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS)
 am_ipushd_OBJECTS = ipushd-worker.$(OBJEXT) ipushd-wtable.$(OBJEXT) \
 	ipushd-common.$(OBJEXT) ipushd-db.$(OBJEXT) \
-	ipushd-kmap.$(OBJEXT) ipushd-logger.$(OBJEXT) \
+	ipushd-logger.$(OBJEXT) ipushd-iniparser.$(OBJEXT) \
 	ipushd-mmqueue.$(OBJEXT) ipushd-mmtree64.$(OBJEXT) \
 	ipushd-mmtrie.$(OBJEXT) ipushd-mqueue.$(OBJEXT) \
 	ipushd-mtree64.$(OBJEXT) ipushd-mtree.$(OBJEXT) \
@@ -152,10 +152,10 @@ utils/common.c  \
 utils/common.h \
 utils/db.c \
 utils/db.h \
-utils/kmap.c \
-utils/kmap.h \
 utils/logger.c \
 utils/logger.h \
+utils/iniparser.c \
+utils/iniparser.h \
 utils/mmqueue.c \
 utils/mmqueue.h \
 utils/mmtree64.c \
@@ -242,7 +242,7 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-common.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-db.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-kmap.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-iniparser.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-logger.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-mmqueue.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipushd-mmtree64.Po@am__quote@
@@ -325,20 +325,6 @@ ipushd-db.obj: utils/db.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-db.obj `if test -f 'utils/db.c'; then $(CYGPATH_W) 'utils/db.c'; else $(CYGPATH_W) '$(srcdir)/utils/db.c'; fi`
 
-ipushd-kmap.o: utils/kmap.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-kmap.o -MD -MP -MF "$(DEPDIR)/ipushd-kmap.Tpo" -c -o ipushd-kmap.o `test -f 'utils/kmap.c' || echo '$(srcdir)/'`utils/kmap.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/ipushd-kmap.Tpo" "$(DEPDIR)/ipushd-kmap.Po"; else rm -f "$(DEPDIR)/ipushd-kmap.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/kmap.c' object='ipushd-kmap.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-kmap.o `test -f 'utils/kmap.c' || echo '$(srcdir)/'`utils/kmap.c
-
-ipushd-kmap.obj: utils/kmap.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-kmap.obj -MD -MP -MF "$(DEPDIR)/ipushd-kmap.Tpo" -c -o ipushd-kmap.obj `if test -f 'utils/kmap.c'; then $(CYGPATH_W) 'utils/kmap.c'; else $(CYGPATH_W) '$(srcdir)/utils/kmap.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/ipushd-kmap.Tpo" "$(DEPDIR)/ipushd-kmap.Po"; else rm -f "$(DEPDIR)/ipushd-kmap.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/kmap.c' object='ipushd-kmap.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-kmap.obj `if test -f 'utils/kmap.c'; then $(CYGPATH_W) 'utils/kmap.c'; else $(CYGPATH_W) '$(srcdir)/utils/kmap.c'; fi`
-
 ipushd-logger.o: utils/logger.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-logger.o -MD -MP -MF "$(DEPDIR)/ipushd-logger.Tpo" -c -o ipushd-logger.o `test -f 'utils/logger.c' || echo '$(srcdir)/'`utils/logger.c; \
 @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/ipushd-logger.Tpo" "$(DEPDIR)/ipushd-logger.Po"; else rm -f "$(DEPDIR)/ipushd-logger.Tpo"; exit 1; fi
@@ -352,6 +338,20 @@ ipushd-logger.obj: utils/logger.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/logger.c' object='ipushd-logger.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-logger.obj `if test -f 'utils/logger.c'; then $(CYGPATH_W) 'utils/logger.c'; else $(CYGPATH_W) '$(srcdir)/utils/logger.c'; fi`
+
+ipushd-iniparser.o: utils/iniparser.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-iniparser.o -MD -MP -MF "$(DEPDIR)/ipushd-iniparser.Tpo" -c -o ipushd-iniparser.o `test -f 'utils/iniparser.c' || echo '$(srcdir)/'`utils/iniparser.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/ipushd-iniparser.Tpo" "$(DEPDIR)/ipushd-iniparser.Po"; else rm -f "$(DEPDIR)/ipushd-iniparser.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/iniparser.c' object='ipushd-iniparser.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-iniparser.o `test -f 'utils/iniparser.c' || echo '$(srcdir)/'`utils/iniparser.c
+
+ipushd-iniparser.obj: utils/iniparser.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-iniparser.obj -MD -MP -MF "$(DEPDIR)/ipushd-iniparser.Tpo" -c -o ipushd-iniparser.obj `if test -f 'utils/iniparser.c'; then $(CYGPATH_W) 'utils/iniparser.c'; else $(CYGPATH_W) '$(srcdir)/utils/iniparser.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/ipushd-iniparser.Tpo" "$(DEPDIR)/ipushd-iniparser.Po"; else rm -f "$(DEPDIR)/ipushd-iniparser.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/iniparser.c' object='ipushd-iniparser.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ipushd-iniparser.obj `if test -f 'utils/iniparser.c'; then $(CYGPATH_W) 'utils/iniparser.c'; else $(CYGPATH_W) '$(srcdir)/utils/iniparser.c'; fi`
 
 ipushd-mmqueue.o: utils/mmqueue.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ipushd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ipushd-mmqueue.o -MD -MP -MF "$(DEPDIR)/ipushd-mmqueue.Tpo" -c -o ipushd-mmqueue.o `test -f 'utils/mmqueue.c' || echo '$(srcdir)/'`utils/mmqueue.c; \

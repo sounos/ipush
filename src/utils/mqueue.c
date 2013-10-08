@@ -11,7 +11,6 @@
 #include "xmm.h"
 MQUEUE *mqueue_init()
 {
-    struct stat st = {0};
     MQUEUE *mmq = NULL;
 
     if((mmq = (MQUEUE *)xmm_mnew(sizeof(MQUEUE))))

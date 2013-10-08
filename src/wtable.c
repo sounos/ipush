@@ -201,7 +201,7 @@ int wtable_appid(WTABLE *wtab, char *appkey, int len)
 /* wtable app auth */
 int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, int64_t last_time)
 {
-    int ret = 0, mid = 0, msgid = 0, n = 0, appid = 0;
+    int mid = 0, msgid = 0, n = 0, appid = 0;
     int64_t time = 0;
 
     if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, appkey, len)) > 0)     
@@ -221,7 +221,7 @@ int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, i
 /* wtable new push msg */
 int wtable_new_msg(WTABLE *wtab, int appid, char *msg, char len)
 {
-    int msgid = 0, mid = 0, i = 0, id = 0;
+    int msgid = 0, mid = 0, i = 0;
     struct timeval tv = {0};
     char buf[W_BUF_SIZE];
     int64_t now = 0;

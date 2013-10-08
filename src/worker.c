@@ -20,6 +20,7 @@
 #include <openssl/err.h>
 #include <openssl/crypto.h>
 #endif
+#include <pwd.h>
 #include <signal.h>
 #include <locale.h>
 #include <pthread.h>
@@ -31,7 +32,7 @@
 #include "db.h"
 #include "wtable.h"
 #include "logger.h"
-#include "iniparse.h"
+#include "iniparser.h"
 #include "xmm.h"
 static WTABLE *wtab = NULL;
 static dictionary *dict = NULL;
@@ -315,7 +316,7 @@ err:
 void worker_running(int wid, int listenport)
 {
     WORKER *workers = wtab->state->workers;
-    int opt = 1, fd = 0, taskid = 0;
+    int opt = 1, taskid = 0;
     struct sockaddr_in sa;
     socklen_t sa_len = 0;
     pid_t pid = 0;
@@ -417,8 +418,7 @@ stop:
 void worker_init(void *arg)
 {
     WORKER *workers = wtab->state->workers;
-    int wid = (int)((long)arg), n = 0, total = 0, taskid = 0;
-    char buf[W_BUF_SIZE], *req = NULL;
+    int wid = (int)((long)arg), taskid = 0;
     pid_t pid = 0;
 
     if(wid > 0 && wid < W_WORKER_MAX)
@@ -624,10 +624,10 @@ int main(int argc, char **argv)
 #else
 int main(int argc, char **argv)
 {
+    char log[256], *ss = NULL, *s = NULL, *workdir = NULL, *whitelist = NULL, 
+         *conf = NULL, ch = 0, *p = NULL;
     struct passwd *user = NULL;
-    char *conf = NULL, ch = 0, *p = NULL;
-    int is_run_daemon = 0, i = 0;
-    pid_t pid;
+    int is_run_daemon = 0;
 
     /* get configure file */
     while((ch = getopt(argc, argv, "c:d")) != (char)-1)
@@ -646,7 +646,7 @@ int main(int argc, char **argv)
         _exit(-1);
     }
     p = iniparser_getstr(dict, "IPUSHD:user");
-    if((user = getpwnam(p)) == NULL || setuid(user->pw_uid)) 
+    if((user = getpwnam((const char *)p)) == NULL || setuid(user->pw_uid)) 
     {
         fprintf(stderr, "setuid(%s) for ipushd failed, %s\n", p, strerror(errno));
         exit(EXIT_FAILURE);
@@ -663,7 +663,7 @@ int main(int argc, char **argv)
     }
     if(!(whitelist = iniparser_getstr(dict, "IPUSHD:whitelist")))
     {
-        fprintf(stderr, "NULL whitelist\n", whitelist);
+        fprintf(stderr, "NULL whitelist\n");
         exit(EXIT_FAILURE);
     }
     is_use_SSL = iniparser_getint(dict, "IPUSHD:is_use_SSL", 0);

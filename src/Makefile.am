@@ -6,6 +6,8 @@ utils/db.c \
 utils/db.h \
 utils/logger.c \
 utils/logger.h \
+utils/iniparser.c \
+utils/iniparser.h \
 utils/mmqueue.c \
 utils/mmqueue.h \
 utils/mmtree64.c \
