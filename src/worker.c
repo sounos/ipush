@@ -184,6 +184,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
             ss = s = line;
             while((p = strchr(ss, '\n')))
             {
+                REALLOG(logger, "%.*s conn[%s:%d] via %d", p - ss, ss, conns[fd].ip, conns[fd].port, fd);
                 if(strncmp(s, "{\"appid\":\"", 10) == 0)
                 {
                     if(wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
@@ -195,13 +196,13 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         {
                             *s = '\0';
                             appid = wtable_appid(wtab, xs, s - xs);
-                            REALLOG(logger, "new appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
+                            REALLOG(logger, "new appkey[%s] from conn[%s:%d] via %d", xs, conns[fd].ip, conns[fd].port, fd)
                             *s = '"';
                         }
                     }
                     else 
                     {
-                        WARN_LOGGER(logger, "no whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
+                        REALLOG(logger, "WARN!!! new-app but not whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
                         goto err;
                     }
                 }
@@ -224,7 +225,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
                     else 
                     {
-                        WARN_LOGGER(logger, "no whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
+                        REALLOG(logger, "WARN!!! new-msg but not whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
                         goto err;
                     }
                 }
@@ -249,7 +250,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                             *s = '\0';
                             if((appid=wtable_app_auth(wtab, g_workerid, xs, s - xs,fd,last))< 1) 
                             {
-                                WARN_LOGGER(logger, "unknown appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
+                                REALLOG(logger, "WARN!!! unknown appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
                             }
                             event_add(&(conns[fd].event), E_WRITE);
@@ -258,7 +259,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
                     else 
                     {
-                        WARN_LOGGER(logger, "bad request[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd)
+                        REALLOG(logger, "WARN!!! bad request[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd)
                         goto err;
                     }
                 }
@@ -701,7 +702,6 @@ int main(int argc, char **argv)
     signal(SIGALRM, SIG_IGN);
     conns = (CONN *)xmm_mnew(sizeof(CONN) * CONN_MAX);
     if(conns == NULL) exit(EXIT_FAILURE);
-    fprintf(stdout, "%s::%d\n", __FILE__, __LINE__);
 #ifdef HAVE_SSL
     if(is_use_SSL)
     {

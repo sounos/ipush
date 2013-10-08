@@ -70,6 +70,8 @@ WTABLE *wtable_init(char *dir)
         memset(wtab->state->workers, 0, sizeof(WORKER) * W_WORKER_MAX);
         wtab->state->nworkers = 0;
         wtab->state->conn_total = 0;
+        n = sprintf(path, "%s/%s", dir, WT_MDB_DIR);
+        wtab->mdb = db_init(path, DB_USE_MMAP);
         /* mmtrie */
         n = sprintf(path, "%s/%s", dir, WT_MAP_NAME);
         if((wtab->map = mmtrie_init(path)) == NULL) _exit(-1);
@@ -207,6 +209,7 @@ int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, i
     if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, appkey, len)) > 0)     
     {
         mtree_insert(wtab->state->workers[wid].map, appid, conn_id, wid, NULL);
+        REALLOG(wtab->logger, "app[%.*s] total:%d", len, appkey, mtree_total(wtab->state->workers[wid].map, appid));
         mid = mmtree64_max(wtab->appmap, appid, &time, &msgid);
         while(mid && time >= last_time && msgid > 0)
         {

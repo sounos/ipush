@@ -1,7 +1,7 @@
 #ifndef __WTABLE__H__
 #define __WTABLE__H__
 #include "mutex.h"
-#define W_WORKER_MAX        4096
+#define W_WORKER_MAX        256
 #define W_CMD_NEWPROC       0x01
 #define W_CMD_STOP          0x02
 #define W_CMD_TASK          0x04
@@ -50,12 +50,10 @@ typedef struct _WTABLE
     int  whitelist;
     MUTEX mutex;
     void *mdb;/* msg db */
-    void *wdb;/* worker db */
     void *map;/* key/value map */
     void *appmap;/* mmtree */
     void *mtree;/* mtree */
     void *queue;/* msg queue*/
-    void *task_queue;/* task queue*/
     void *logger;
     WSTATE *state; 
 }WTABLE;

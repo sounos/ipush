@@ -25,3 +25,6 @@ utils/mutex.h \
 utils/xmm.c \
 utils/xmm.h 
 ipushd_CPPFLAGS = -I utils -D_FILE_OFFSET_BITS=64 -Wall
+bin_PROGRAMS = evpush
+evpush_SOURCES = evpush.c
+evpush_CPPFLAGS = -I utils -D_FILE_OFFSET_BITS=64 -Wall

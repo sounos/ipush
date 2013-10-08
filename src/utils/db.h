@@ -6,7 +6,7 @@
 #endif
 #define DB_LNK_MAX          2097152
 #define DB_LNK_INCREMENT    65536
-#define DB_DBX_MAX          2000000000
+#define DB_DBX_MAX          200000000
 #define DB_DBX_BASE         1000000
 #define DB_BASE_SIZE        16
 #define DB_PATH_MAX         1024
