@@ -1,4 +1,4 @@
-bin_PROGRAMS = ipushd
+sbin_PROGRAMS = ipushd
 ipushd_SOURCES = worker.c wtable.c wtable.h \
 utils/common.c  \
 utils/common.h \
