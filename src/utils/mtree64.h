@@ -3,7 +3,7 @@
 #define MTREE64_INCRE_NUM    1000000
 #define MTREE64_NODES_MAX    200000000
 #define MTREE64_MUTEX_MAX    256
-#define MTREE64_ROOT_MAX     10240
+#define MTREE64_ROOT_MAX     131072
 #include "mutex.h"
 typedef struct _MTNODE64
 {

@@ -3,7 +3,7 @@
 #define MMTREE64_INCRE_NUM    1000000
 #define MMTREE64_NODES_MAX    2000000000
 #define MMTREE64_MUTEX_MAX    256
-#define MMTREE64_ROOT_MAX     10240
+#define MMTREE64_ROOT_MAX     131072
 #include "mutex.h"
 typedef struct _MMTNODE64
 {
@@ -68,5 +68,7 @@ int mmtree64_set_data(void *mmtree, unsigned int nodeid, int data);
 void mmtree64_view_tree(void *mmtree, int rootid, FILE *fp);
 void mmtree64_remove(void *mmtree, int rootid, unsigned int nodeid, int64_t *key, int *data);
 void mmtree64_remove_tree(void *mmtree, int rootid);
+void mmtree64_reuse_all(void *x);
+void mmtree64_use_all(void *x);
 void mmtree64_close(void *mmtree);
 #endif

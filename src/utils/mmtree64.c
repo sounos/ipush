@@ -952,6 +952,37 @@ void mmtree64_remove_tree(void *x, int rootid)
     return ;
 }
 
+void mmtree64_reuse_all(void *x)
+{
+    int i = 0;
+    if(x)
+    {
+        MMT(x)->state->nroots = 1;
+        for(i = 1; i < MMTREE64_ROOT_MAX; i++)
+        {
+            mmtree64_remove_tnode(x, MMT(x)->state->roots[i].rootid);
+            MMT(x)->state->roots[i].rootid = 0;
+            MMT(x)->state->roots[i].status = 1;
+        }
+    }
+    return ;
+}
+
+void mmtree64_use_all(void *x)
+{
+    int i = 0;
+    if(x)
+    {
+        MMT(x)->state->nroots = 1;
+        for(i = 1; i < MMTREE64_ROOT_MAX; i++)
+        {
+            MMT(x)->state->roots[i].status = 1;
+            MMT(x)->state->nroots++;
+        }
+    }
+    return ;
+}
+
 //close mmtree
 void mmtree64_close(void *x)
 {

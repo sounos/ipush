@@ -26,7 +26,9 @@
 #include <errno.h>
 #include <evbase.h>
 #include "common.h"
-#include "mmqueue.h"
+#include "mqueue.h"
+#include "mtree.h"
+#include "db.h"
 #include "wtable.h"
 #include "logger.h"
 #include "xmm.h"
@@ -39,16 +41,13 @@ static LOGGER *logger = NULL;
 #define CONN_MAX    65536
 #define CONN_BACKLOG_MAX 8192
 #define EV_BUF_SIZE 65536
-#define CONN_APP_MAX 64
 typedef struct _CONN
 {
     int status;
     int workerid;
     int keepalive;
-    int out_off;
     ushort port;
     ushort bit;
-    int bits;
     char ip[16];
 #ifdef HAVE_SSL
     SSL *ssl;
@@ -80,12 +79,37 @@ static void worker_stop(int sig)
     }
 }
 
+void ev_ready_push()
+{
+    int wid = g_workerid, msgid = 0, appid = 0, mid = 0, conn_id = 0;
+    WHEAD *head = NULL;
+
+    while(mqueue_pop(wtab->queue, wtab->state->workers[wid].msg_qid, &msgid) > 0)
+    {
+        head = NULL;
+        if(db_exists_block(wtab->mdb, msgid, (char **)&head) > sizeof(WHEAD)
+                && head && (appid = head->mix) > 0)
+        {
+            conn_id = 0;
+            mid = mtree_max(wtab->state->workers[wid].map, appid, &conn_id, NULL);
+            while(mid > 0 && conn_id > 0)
+            {
+                mqueue_push(wtab->state->workers[wid].queue,wtab->state->workers[wid].q[conn_id],msgid);
+                event_add(&(conns[conn_id].event), E_WRITE);
+                conn_id = 0;
+                mid = mtree_prev(wtab->state->workers[wid].map, appid, (unsigned int)mid, &conn_id, NULL);
+            }
+        }
+    }
+    return ;
+}
+
 void ev_handler(int fd, int ev_flags, void *arg)
 {
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
-    char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL;
-    int rfd = 0, n = 0, nreq = 0, nblock = 0, appid = 0, msgid = 0;
+    char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL, *msg = NULL;
+    int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0;
     int64_t last = 0;
 
     if(fd == listenfd)
@@ -130,6 +154,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         (void *)&(conns[rfd].event), &ev_handler);
                 evbase->add(evbase, &(conns[rfd].event));
                 ++(wtab->state->conn_total);
+                wtable_newconn(wtab, g_workerid, rfd);
                 if(wtab->state->nworkers > 1 
                         && (wtab->state->conn_total/(wtab->state->nworkers-1)) > W_CONN_AVG)
                 {
@@ -220,12 +245,12 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         if(*s == '"')
                         {
                             *s = '\0';
-                            if((appid = wtable_appid_auth(wtab, g_workerid, xs, s - xs, fd)) < 1) 
+                            if((appid=wtable_app_auth(wtab, g_workerid, xs, s - xs,fd,last))< 1) 
                             {
                                 WARN_LOGGER(logger, "unknown appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
                             }
-                            /* set applist */
+                            event_add(&(conns[fd].event), E_WRITE);
                             *s = '"';
                         }
                     }
@@ -241,10 +266,34 @@ void ev_handler(int fd, int ev_flags, void *arg)
         }
         if(ev_flags & E_WRITE)
         {
+            msg = NULL;
+            if((len = wtable_get_msg(wtab, g_workerid, fd, &msg)) > 0 && msg) 
+            {
+                if(is_use_SSL)
+                {
+#ifdef HAVE_SSL
+                    n = SSL_write(conns[fd].ssl, msg, len);
+#endif
+                }
+                else
+                {
+                    n = write(fd, msg, len);
+                }
+                if(n <= 0) goto err;
+                if(wtable_over_msg(wtab, g_workerid, fd) < 1)
+                {
+                    event_del(&(conns[fd].event), E_WRITE);
+                }
+            }
+            else 
+            {
+                event_del(&(conns[fd].event), E_WRITE);
+            }
         }
         return ;
 err:
         event_destroy(&(conns[fd].event));
+        wtable_endconn(wtab, g_workerid, fd);
 #ifdef HAVE_SSL
         if(conns[fd].ssl)
         {   SSL_shutdown(conns[fd].ssl);
@@ -342,10 +391,11 @@ running:
         do
         {
             evbase->loop(evbase, 0, &tv);
-            while((taskid = wtable_pop_task(wtab, wid)) > 0)
+            while((taskid = wtable_pop_task(wtab, g_workerid)) > 0)
             {
                 if(taskid == W_CMD_STOP) goto stop;
             }
+            ev_ready_push();
         }while(wtab->state->workers[g_workerid].running);
 stop:
         event_destroy(&(conns[listenfd].event));
