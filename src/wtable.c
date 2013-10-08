@@ -124,7 +124,7 @@ int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status)
         if(workerid > 1) 
         {
             wtab->state->workers[workerid].queue = mqueue_init();
-            wtab->state->workers[workerid].map = (void *)mtree_init();
+            wtab->state->workers[workerid].map = mtree_init();
             mtree_reuse_all(wtab->state->workers[workerid].map);
         }
         MUTEX_INIT(wtab->state->workers[workerid].mmlock);
@@ -209,7 +209,7 @@ int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, i
     if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, appkey, len)) > 0)     
     {
         mtree_insert(wtab->state->workers[wid].map, appid, conn_id, wid, NULL);
-        REALLOG(wtab->logger, "app[%.*s] total:%d", len, appkey, mtree_total(wtab->state->workers[wid].map, appid));
+        REALLOG(wtab->logger, "workers[%d] app[%.*s][%d] qtotal:%p/%d", wid, len, appkey, appid, wtab->state->workers[wid].map, mtree_total(wtab->state->workers[wid].map, appid));
         mid = mmtree64_max(wtab->appmap, appid, &time, &msgid);
         while(mid && time >= last_time && msgid > 0)
         {
@@ -222,7 +222,7 @@ int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, i
 }
 
 /* wtable new push msg */
-int wtable_new_msg(WTABLE *wtab, int appid, char *msg, char len)
+int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len)
 {
     int msgid = 0, mid = 0, i = 0;
     struct timeval tv = {0};
@@ -239,40 +239,13 @@ int wtable_new_msg(WTABLE *wtab, int appid, char *msg, char len)
         db_set_data(wtab->mdb, msgid, buf, len + sizeof(WHEAD)); 
         gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
         mid = (int)mmtree64_try_insert(wtab->appmap, appid, now, msgid, NULL);
-        for(i = 0; i < wtab->state->nworkers; i++)
+        for(i = 2; i <= wtab->state->nworkers; i++)
         {
             mqueue_push(wtab->queue, wtab->state->workers[i].msg_qid, msgid);
         }
+        REALLOG(wtab->logger, "new-msg[%.*s] for appid:%d", len, msg, appid);
     }
     return msgid;
-}
-
-/* send msg */
-int wtable_ready_push(WTABLE *wtab, int wid, int *tabs)
-{
-    int ret = -1, msgid = 0, mid = 0, appid = 0, conn_id = 0;
-    WHEAD *head = NULL;
-
-    if(wtab && wid > 0)
-    {
-        while(mqueue_pop(wtab->queue, wtab->state->workers[wid].msg_qid, &msgid) > 0)
-        {
-            head = NULL;
-            if(db_exists_block(wtab->mdb, msgid, (char **)&head) > sizeof(WHEAD) 
-                    && head && (appid = head->mix) > 0)
-            {
-                conn_id = 0;
-                mid = mtree_max(wtab->state->workers[wid].map, appid, &conn_id, NULL);
-                while(mid > 0 && conn_id > 0)
-                {
-                    mqueue_push(wtab->state->workers[wid].queue,wtab->state->workers[wid].q[conn_id],msgid);
-                    conn_id = 0;
-                    mid = mtree_prev(wtab->state->workers[wid].map, appid, mid, &conn_id, NULL);
-                }
-            }
-        }
-    }
-    return ret;
 }
 
 /* get msg info */

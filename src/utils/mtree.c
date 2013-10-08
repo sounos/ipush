@@ -347,6 +347,7 @@ unsigned int mtree_total(void *x, int rootid)
         if(MT(x)->state && MT(x)->map && rootid < MTREE_ROOT_MAX)
         {
             total =  MT(x)->state->roots[rootid].total;
+            //fprintf(stdout, "%s::%d rootid:%d/%d\n", __FILE__, __LINE__, rootid, total);
         }
         MUTEX_UNLOCK(MT(x)->mutex);
     }

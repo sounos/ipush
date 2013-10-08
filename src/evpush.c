@@ -59,8 +59,6 @@ typedef struct _CONN
 #endif
 }CONN;
 static CONN *conns = NULL;
-#ifndef _LOG_
-#define _LOG_
 static char *_ymonths[]= {
 	"Jan", "Feb", "Mar",
 	"Apr", "May", "Jun",
@@ -79,7 +77,6 @@ static char *_ymonths[]= {
 			p->tm_min, p->tm_sec, (unsigned int)tv.tv_usec, 			\
 			(unsigned int)getpid(), __FILE__, __LINE__);\
 }
-#ifndef DEBUG_LOG
 #ifdef _DEBUG										
 #define DEBUG_LOG(format...)								\
 {											\
@@ -91,7 +88,6 @@ static char *_ymonths[]= {
 }											
 #else											
 #define  DEBUG_LOG(format...)
-#endif											
 #endif
 
 #define FATAL_LOG(format...)								\
@@ -118,7 +114,6 @@ static char *_ymonths[]= {
         fprintf(stdout, "\"\n");                                                        \
 	fflush(stdout);									\
 }
-#endif
 int setrlimiter(char *name, int rlimit, int nset)
 {
     int ret = -1;
@@ -158,6 +153,12 @@ int new_request()
         conns[fd].fd = fd;
         if(is_use_SSL && sock_type == SOCK_STREAM)
         {
+            /* Connect */
+            if(connect(fd, (struct sockaddr *)&xsa, xsa_len) != 0)
+            {
+                FATAL_LOG("Connect to %s:%d failed, %s", ip, port, strerror(errno));
+                _exit(-1);
+            }
 #ifdef HAVE_SSL
             conns[fd].ssl = SSL_new(ctx);
             if(conns[fd].ssl == NULL )
@@ -175,7 +176,7 @@ int new_request()
             /* SSL Connect */
             if(SSL_connect(conns[fd].ssl) < 0)
             {
-                FATAL_LOG("SSL connection failed:%s\n",
+                SHOW_LOG("SSL connection failed:%s\n",
                         ERR_reason_error_string(ERR_get_error()));
                 _exit(-1);
             }
@@ -184,14 +185,11 @@ int new_request()
         /* set FD NON-BLOCK */
         if(sock_type == SOCK_STREAM)
         {
-            /* Connect */
-            if(connect(fd, (struct sockaddr *)&xsa, xsa_len) != 0)
+            if(!is_use_SSL)
             {
-                FATAL_LOG("Connect to %s:%d failed, %s", ip, port, strerror(errno));
-                _exit(-1);
+                flag = fcntl(fd, F_GETFL, 0)|O_NONBLOCK;
+                fcntl(fd, F_SETFL, flag);
             }
-            flag = fcntl(fd, F_GETFL, 0)|O_NONBLOCK;
-            fcntl(fd, F_SETFL, flag);
             event_set(&conns[fd].event, fd, E_READ|E_WRITE|E_PERSIST, 
                     (void *)&(conns[fd].event), &ev_handler);
         }
@@ -223,30 +221,12 @@ int new_request()
             */
             getsockname(fd, (struct sockaddr *)&lsa, &lsa_len);
             SHOW_LOG("Connected to remote[%s:%d] local[%s:%d] via %d", ip, port, inet_ntoa(lsa.sin_addr), ntohs(lsa.sin_port), fd);
-            n = atoi(ip);
-            if(n >= 224 && n <= 239)
-            {
-                struct ip_mreq mreq;
-                memset(&mreq, 0, sizeof(struct ip_mreq));
-                mreq.imr_multiaddr.s_addr = inet_addr(ip);
-                mreq.imr_interface.s_addr = INADDR_ANY;
-                if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,(char*)&mreq, sizeof(mreq)) != 0)
-                {
-                    SHOW_LOG("Setsockopt(MULTICAST) failed, %s", strerror(errno));
-                    return -1;
-                }
-                if(setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &lsa.sin_addr, sizeof(struct in_addr)) < 0)
-                {
-                    FATAL_LOG("Setsockopt(IP_MULTICAST_IF) failed, %s", strerror(errno));
-                    return -1;
-                }
-            }
             event_set(&conns[fd].event, fd, E_READ|E_WRITE|E_PERSIST, 
                     (void *)&(conns[fd].event), &ev_udp_handler);
         }
         evbase->add(evbase, &(conns[fd].event));
         conns[fd].nresp = 0;
-        conns[fd].nreq = sprintf(conns[fd].request, "{\"last\":\"2013-10-08T07:38:19.958Z\",\"oauth_key\":\"3N2pk4WmRg8XKOQZoCy4Ag\",\"installation_id\":\"55416459-b816-4dd7-aa1f-03679a261ab9\",\"v\":\"a1.3.4\"}");
+        conns[fd].nreq = sprintf(conns[fd].request, "{\"last\":\"2013-10-08T07:38:19.958Z\",\"oauth_key\":\"136EQsilHsLMAU2mjSw7tC\",\"installation_id\":\"55416459-b816-4dd7-aa1f-03679a261ab9\",\"v\":\"a1.3.4\"}\n");
         /*
         if(keepalive)
             conns[fd].nreq = sprintf(conns[fd].request, "GET / HTTP/1.0\r\nConnection: Keep-Alive\r\n\r\n");
@@ -400,13 +380,13 @@ int main(int argc, char **argv)
 
     if(argc < 7)
     {
-        fprintf(stderr, "Usage:%s sock_type(0/TCP|1/UDP) iskeepalive ip port conn_num is_use_SSL\n", argv[0]);	
+        fprintf(stderr, "Usage:%s sock_type(0:TCP|1:UDP) iskeepalive ip port conn_num is_use_SSL\n", argv[0]);	
         _exit(-1);
     }	
     ev_sock_type = atoi(argv[1]);
     if(ev_sock_type < 0 || ev_sock_type > ev_sock_count)
     {
-        fprintf(stderr, "sock_type must be 0/TCP OR 1/UDP\n");
+        fprintf(stderr, "sock_type must be 0:TCP OR 1:UDP\n");
         _exit(-1);
     }
     sock_type = ev_sock_list[ev_sock_type];
@@ -446,7 +426,6 @@ int main(int argc, char **argv)
             for(i = 0; i < conn_num; i++)
             {
                 new_request();
-                i++;
             }
             running_status = 1;
             do

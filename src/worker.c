@@ -27,10 +27,10 @@
 #include <errno.h>
 #include <evbase.h>
 #include "common.h"
-#include "mqueue.h"
-#include "mtree.h"
 #include "db.h"
 #include "wtable.h"
+#include "mtree.h"
+#include "mqueue.h"
 #include "logger.h"
 #include "iniparser.h"
 #include "xmm.h"
@@ -90,13 +90,15 @@ void ev_ready_push()
     {
         head = NULL;
         if(db_exists_block(wtab->mdb, msgid, (char **)&head) > sizeof(WHEAD)
-                && head && (appid = head->mix) > 0)
+                    && head && (appid = head->mix) > 0)
         {
+            REALLOG(logger, "workers[%d] ready push app:%d msg:%d qtotal:%p/%d", wid, appid, msgid, wtab->state->workers[wid].map, mtree_total(wtab->state->workers[wid].map, appid));
             conn_id = 0;
             mid = mtree_max(wtab->state->workers[wid].map, appid, &conn_id, NULL);
             while(mid > 0 && conn_id > 0)
             {
                 mqueue_push(wtab->state->workers[wid].queue,wtab->state->workers[wid].q[conn_id],msgid);
+                REALLOG(logger, "workers[%d] ready push app:%d msg:%d to conn[%d] total:%d", wid, appid, msgid, conn_id, mtree_total(wtab->state->workers[wid].map, appid));
                 event_add(&(conns[conn_id].event), E_WRITE);
                 conn_id = 0;
                 mid = mtree_prev(wtab->state->workers[wid].map, appid, (unsigned int)mid, &conn_id, NULL);
@@ -151,7 +153,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
 #endif
                 }
-                REALLOG(logger, "new connection[%s:%d] via %d", conns[rfd].ip, conns[rfd].port, rfd)
+                REALLOG(logger, "worker[%d] new connection[%s:%d] via %d", g_workerid, conns[rfd].ip, conns[rfd].port, rfd)
                 event_set(&(conns[rfd].event), rfd, E_READ|E_PERSIST,
                         (void *)&(conns[rfd].event), &ev_handler);
                 evbase->add(evbase, &(conns[rfd].event));
@@ -210,7 +212,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 {
                     if((s = strstr(s, "\"oauth_key\":\"")) && wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
                     {/* check whitelist & add msg */
-                        s += 11;
+                        s += 13;
                         xs = s;
                         while(*s != '\0' && *s != '"') ++s;
                         if(*s == '"')
@@ -220,7 +222,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                             *s = '"';
                             n = (p+1) - ss;
                             msgid = wtable_new_msg(wtab, appid, ss, n);
-                            REALLOG(logger, "new msg[%.*s] from conn[%s:%d] via %d", n, ss, conns[fd].ip, conns[fd].port, fd)
+                            REALLOG(logger, "new:%d msg[%.*s] for appid:%.*s/%d from conn[%s:%d] via %d", msgid, n, ss, s - xs, xs, appid, conns[fd].ip, conns[fd].port, fd)
                         }
                     }
                     else 
@@ -242,7 +244,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
                     if((s = strstr(s, "\"oauth_key\":\"")))
                     {/* auth key  */
-                        s += 11;
+                        s += 13;
                         xs = s;
                         while(*s != '\0' && *s != '"') ++s;
                         if(*s == '"')
@@ -250,7 +252,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                             *s = '\0';
                             if((appid=wtable_app_auth(wtab, g_workerid, xs, s - xs,fd,last))< 1) 
                             {
-                                REALLOG(logger, "WARN!!! unknown appkey[%s] from conn[%s:%d] via %d", ss, conns[fd].ip, conns[fd].port, fd)
+                                REALLOG(logger, "WARN!!! unknown appkey[%.*s] from conn[%s:%d] via %d", s - xs, xs, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
                             }
                             event_add(&(conns[fd].event), E_WRITE);
