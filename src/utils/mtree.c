@@ -290,7 +290,6 @@ void *mtree_init()
 {
     int i = 0;
     void *x = NULL;
-    struct stat  st = {0};
 
     if((x = (MTREE *)xmm_mnew(sizeof(MTREE))))
     {

@@ -31,8 +31,10 @@
 #include "db.h"
 #include "wtable.h"
 #include "logger.h"
+#include "iniparse.h"
 #include "xmm.h"
 static WTABLE *wtab = NULL;
+static dictionary *dict = NULL;
 static int running_status = 0;
 static int g_workerid = 0;
 static int g_main_worker = 0;
@@ -457,8 +459,7 @@ stop:
 }
 
 /* main worker */
-//gcc -o w worker.c wtable.c table.c utils/*.c -I utils -g -lpthread -levbase && ./w 2188 /data/wtab
-//gcc -o w worker.c wtable.c table.c utils/*.c -I utils -g -lpthread -levbase -DUSE_PTHREAD && ./w 2188 /data/wtab
+#ifdef RUN_TEST
 int main(int argc, char **argv)
 {
     char log[256], *ss = NULL, *s = NULL, *workdir = NULL, *whitelist = NULL, 
@@ -620,3 +621,158 @@ int main(int argc, char **argv)
     if(g_main_worker == g_workerid) xmm_free(conns, sizeof(CONN) * CONN_MAX);
     return 0;
 }
+#else
+int main(int argc, char **argv)
+{
+    struct passwd *user = NULL;
+    char *conf = NULL, ch = 0, *p = NULL;
+    int is_run_daemon = 0, i = 0;
+    pid_t pid;
+
+    /* get configure file */
+    while((ch = getopt(argc, argv, "c:d")) != (char)-1)
+    {
+        if(ch == 'c') conf = optarg;
+        else if(ch == 'd') is_run_daemon = 1;
+    }
+    if(conf == NULL)
+    {
+        fprintf(stderr, "Usage:%s -d -c config_file\n", argv[0]);
+        _exit(-1);
+    }
+    if((dict = iniparser_new(conf)) == NULL)
+    {
+        fprintf(stderr, "Initializing conf:%s failed, %s\n", conf, strerror(errno));
+        _exit(-1);
+    }
+    p = iniparser_getstr(dict, "IPUSHD:user");
+    if((user = getpwnam(p)) == NULL || setuid(user->pw_uid)) 
+    {
+        fprintf(stderr, "setuid(%s) for ipushd failed, %s\n", p, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    if((port = iniparser_getint(dict, "IPUSHD:port", 0)) == 0)
+    {
+        fprintf(stderr, "invalid listen port:%d\n", port);
+        exit(EXIT_FAILURE);
+    }
+    if(!(workdir = iniparser_getstr(dict, "IPUSHD:workdir")))
+    {
+        fprintf(stderr, "NULL workdir path\n");
+        exit(EXIT_FAILURE);
+    }
+    if(!(whitelist = iniparser_getstr(dict, "IPUSHD:whitelist")))
+    {
+        fprintf(stderr, "NULL whitelist\n", whitelist);
+        exit(EXIT_FAILURE);
+    }
+    is_use_SSL = iniparser_getint(dict, "IPUSHD:is_use_SSL", 0);
+    cert = iniparser_getstr(dict, "IPUSHD:cacert_file");
+    privkey = iniparser_getstr(dict, "IPUSHD:privkey_file");
+    if(is_use_SSL && (!cert || !privkey || access(cert, F_OK) != 0 || access(privkey, F_OK) != 0))
+    {
+        fprintf(stderr, "certfile OR privkey must be exists\n");
+        exit(EXIT_FAILURE);
+    }
+    if(is_run_daemon)
+    {
+        pid_t pid = fork();
+        switch (pid) {
+            case -1:
+                perror("fork()");
+                exit(EXIT_FAILURE);
+                break;
+            case 0: //child
+                if(setsid() == -1) exit(EXIT_FAILURE);
+                break;
+            default://parent
+                _exit(EXIT_SUCCESS);
+                break;
+        }
+    }
+    /* locale */
+    setlocale(LC_ALL, "C");
+    /* signal */
+    signal(SIGTERM, &worker_stop);
+    signal(SIGINT,  &worker_stop);
+    signal(SIGHUP,  &worker_stop);
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    setrlimiter("RLIMIT_NOFILE", RLIMIT_NOFILE, CONN_MAX);
+    conns = (CONN *)xmm_mnew(sizeof(CONN) * CONN_MAX);
+    if(conns == NULL) exit(EXIT_FAILURE);
+#ifdef HAVE_SSL
+    if(is_use_SSL)
+    {
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();
+        SSL_load_error_strings();
+        if((ctx = SSL_CTX_new(SSLv23_server_method())) == NULL)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*load certificate */
+        if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*load private key file */
+        if (SSL_CTX_use_PrivateKey_file(ctx, privkey, SSL_FILETYPE_PEM) <= 0)
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+        /*check private key file */
+        if (!SSL_CTX_check_private_key(ctx))
+        {
+            ERR_print_errors_fp(stdout);
+            exit(1);
+        }
+    }
+#endif
+    if((wtab = wtable_init(workdir)))
+    {
+        sprintf(log, "%s/run.log", workdir);
+        LOGGER_INIT(logger, log);
+        ss = s = whitelist;
+        while(*s != '\0')
+        {
+            if(*s == ',')
+            {
+                *s = '\0';
+                if((s - ss) > 0)
+                {
+                    wtable_set_whitelist(wtab, (int)inet_addr(ss));
+                    REALLOG(logger, "added whitelist:%s", ss);
+                }
+                ss = ++s;
+            }
+            else ++s;
+        }
+        if((s - ss) > 0)
+        {
+            wtable_set_whitelist(wtab, (int)inet_addr(ss));
+            REALLOG(logger, "added whitelist:%s", ss);
+        }
+        g_workerid = g_main_worker = ++(wtab->state->nworkers); 
+        worker_running(g_workerid, port);
+        if(g_main_worker == g_workerid)
+        {
+            DEBUG_LOGGER(logger, "ready for stopping %d workers", wtab->state->nworkers);
+            wtable_stop(wtab);
+            wtable_close(wtab);
+        }
+    }
+    else
+    {
+        fprintf(stderr, "initialize wtable(%s) failed, %s\n", workdir, strerror(errno));
+    }
+    //DEBUG_LOGGER(logger, "ready for munmap(%p)", conns);
+    if(g_main_worker == g_workerid) xmm_free(conns, sizeof(CONN) * CONN_MAX);
+    if(dict)iniparser_free(dict);
+    return 0;
+}
+#endif

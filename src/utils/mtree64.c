@@ -290,7 +290,6 @@ void *mtree64_init()
 {
     int i = 0;
     void *x = NULL;
-    struct stat  st = {0};
 
     if((x = (MTREE64 *)xmm_mnew(sizeof(MTREE64))))
     {
