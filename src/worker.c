@@ -36,7 +36,6 @@
 #include "xmm.h"
 static WTABLE *wtab = NULL;
 static dictionary *dict = NULL;
-static int running_status = 0;
 static int g_workerid = 0;
 static int g_main_worker = 0;
 static EVBASE *evbase = NULL;
@@ -629,6 +628,7 @@ int main(int argc, char **argv)
     struct passwd *user = NULL;
     int is_run_daemon = 0;
 
+    setrlimiter("RLIMIT_NOFILE", RLIMIT_NOFILE, CONN_MAX);
     /* get configure file */
     while((ch = getopt(argc, argv, "c:d")) != (char)-1)
     {
@@ -699,9 +699,9 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, SIG_IGN);
     signal(SIGALRM, SIG_IGN);
-    setrlimiter("RLIMIT_NOFILE", RLIMIT_NOFILE, CONN_MAX);
     conns = (CONN *)xmm_mnew(sizeof(CONN) * CONN_MAX);
     if(conns == NULL) exit(EXIT_FAILURE);
+    fprintf(stdout, "%s::%d\n", __FILE__, __LINE__);
 #ifdef HAVE_SSL
     if(is_use_SSL)
     {
