@@ -8,7 +8,6 @@
 #include "mmtree64.h"
 #include "mutex.h"
 #include "xmm.h"
-#define MMAP_SHARED MAP_SHARED|MAP_LOCKED
 #define MMT(px) ((MMTREE64 *)px)
 #define MMT_COLOR_BLACK  0
 #define MMT_COLOR_RED    1
@@ -55,10 +54,10 @@ do                                                                              
     if(x)                                                                       \
     {                                                                           \
         if((MMT(x)->start = (char *)mmap(NULL,MMT(x)->size,PROT_READ|PROT_WRITE,\
-                    MMAP_SHARED, MMT(x)->fd, 0)) != (void *)-1)                  \
+                    MAP_SHARED, MMT(x)->fd, 0)) != (void *)-1)                  \
         {                                                                       \
-            MMT(x)->state = (MMSTATE64 *)MMT(x)->start;                           \
-            MMT(x)->map = (MMTNODE64 *)(MMT(x)->start + sizeof(MMSTATE64));          \
+            MMT(x)->state = (MMSTATE64 *)MMT(x)->start;                         \
+            MMT(x)->map = (MMTNODE64 *)(MMT(x)->start + sizeof(MMSTATE64));     \
         }                                                                       \
     }                                                                           \
 }while(0)
