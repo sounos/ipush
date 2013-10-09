@@ -2,7 +2,7 @@
 
 Summary: PushService for push.parse.com
 Name: ipush
-Version: 0.0.1
+Version: 0.0.2
 Release: 1%{?dist}
 License: BSD
 Group: System Environment/Libraries
@@ -47,6 +47,7 @@ PushService for push.parse.com
 
 %files
 %defattr(-, root, root, 0755)
+%{_bindir}/*
 %{_sbindir}/*
 %{_sysconfdir}/rc.d/*
 %config(noreplace) %{_sysconfdir}/*.ini

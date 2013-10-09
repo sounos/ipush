@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <time.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
