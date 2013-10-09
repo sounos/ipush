@@ -67,7 +67,7 @@ int wtable_pop_task(WTABLE *wtab, int workerid);
 int wtable_appid(WTABLE *wtab, char *appkey, int len);
 int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, int64_t last);
 int wtable_ready_push(WTABLE *wtab, int wid, int *tabs);
-int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len);
+int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len, int64_t time);
 int wtable_get_msg(WTABLE *wtab, int workerid, int conn_id, char **block);
 int wtable_over_msg(WTABLE *wtab, int wid, int conn_id);
 int wtable_newconn(WTABLE *wtab, int wid, int id);

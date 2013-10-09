@@ -86,7 +86,7 @@ int64_t strtotime64(char *strtime)
         tp.tm_mon -= 1;
         if(tp.tm_year > 1900) tp.tm_year -= 1900;
         else if(tp.tm_year < 10) tp.tm_year += 100;
-        times = ((int64_t)mktime(&tp) * 100000) + ((int64_t)msec * 1000);
+        times = ((int64_t)mktime(&tp) * 1000000) + ((int64_t)msec * 1000);
     }
     return times;
 }

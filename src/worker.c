@@ -116,7 +116,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
     socklen_t rsa_len = sizeof(struct sockaddr_in);
     char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL, *msg = NULL;
     int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0, i = 0;
-    int64_t last = 0;
+    int64_t time = 0;
 
     if(fd == listenfd)
     {
@@ -132,7 +132,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
 #ifdef HAVE_SSL
                     if((conns[rfd].ssl = SSL_new(ctx)) == NULL)
                     {
-                        FATAL_LOGGER("SSL_new() failed, %s", (char *)ERR_reason_error_string(ERR_get_error()));
+                        FATAL_LOGGER(logger, "SSL_new() failed, %s", (char *)ERR_reason_error_string(ERR_get_error()));
                         shutdown(rfd, SHUT_RDWR);
                         close(rfd);
                         return ;
@@ -146,7 +146,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
                     if((SSL_accept(conns[rfd].ssl)) <= 0)
                     {
-                        FATAL_LOGGER("SSL_Accept connection %s:%d via %d failed, %s",
+                        FATAL_LOGGER(logger, "SSL_Accept connection %s:%d via %d failed, %s",
                                 inet_ntoa(rsa.sin_addr), ntohs(rsa.sin_port),
                                 rfd,  ERR_reason_error_string(ERR_get_error()));
                         shutdown(rfd, SHUT_RDWR);
@@ -189,7 +189,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
             REALLOG(logger, "read %d bytes from %s:%d via %d", n, conns[fd].ip, conns[fd].port, fd);
             while((p = strchr(ss, '\n')))
             {
-                REALLOG(logger, "%.*s conn[%s:%d] via %d", p - ss, ss, conns[fd].ip, conns[fd].port, fd);
+                REALLOG(logger, "%.*s conn[%s:%d] via %d", p - ss - 1, ss, conns[fd].ip, conns[fd].port, fd);
                 if(strncmp(s, "{\"appid\":\"", 10) == 0)
                 {
                     if(wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
@@ -213,6 +213,16 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 }
                 else if(strncmp(s, "{\"time\":\"", 9) == 0)
                 {
+                    s += 9;
+                    time = nowtotime64();
+                    xs = s;
+                    while(*s != '\0' && *s != '"') ++s;
+                    if(*s == '"')
+                    {
+                        *s = '\0';
+                        time = strtotime64(xs);
+                        *s = '"';
+                    }
                     if((s = strstr(s, "\"oauth_key\":\"")) && wtable_check_whitelist(wtab, inet_addr(conns[fd].ip)) > 0)
                     {/* check whitelist & add msg */
                         s += 13;
@@ -224,20 +234,20 @@ void ev_handler(int fd, int ev_flags, void *arg)
                             appid = wtable_appid(wtab, xs, s - xs);
                             *s = '"';
                             n = (p+1) - ss;
-                            msgid = wtable_new_msg(wtab, appid, ss, n);
-                            REALLOG(logger, "new:%d msg[%.*s] for appid:%.*s/%d from conn[%s:%d] via %d", msgid, n, ss, s - xs, xs, appid, conns[fd].ip, conns[fd].port, fd)
+                            msgid = wtable_new_msg(wtab, appid, ss, n, time);
+                            REALLOG(logger, "new-msg[%.*s] for app:[%d:%.*s] from conn[%s:%d] via %d", n - 1 , ss, appid, s - xs, xs, conns[fd].ip, conns[fd].port, fd)
                         }
                     }
                     else 
                     {
                         REALLOG(logger, "WARN!!! new-msg but not whitelist conn[%s:%d] via %d", conns[fd].ip, conns[fd].port, fd)
-                        goto err;
+                            goto err;
                     }
                 }
                 else if(strncmp(s, "{\"last\":", 8) == 0)
                 {
                     s += 8;
-                    last = nowtotime64();
+                    time = nowtotime64();
                     if(*s == '"')
                     {
                         xs = ++s;
@@ -245,7 +255,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         if(*s == '"')
                         {
                             *s = '\0';
-                            last = strtotime64(s);
+                            time = strtotime64(xs);
                             *s = '"';
                         }
                     }
@@ -257,7 +267,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         if(*s == '"')
                         {
                             *s = '\0';
-                            if((appid=wtable_app_auth(wtab, g_workerid, xs, s - xs,fd,last))< 1) 
+                            if((appid=wtable_app_auth(wtab, g_workerid, xs, s - xs,fd, time))< 1) 
                             {
                                 REALLOG(logger, "WARN!!! unknown appkey[%.*s] from conn[%s:%d] via %d", s - xs, xs, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
@@ -296,6 +306,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
                 {
                     n = write(fd, msg, len);
                 }
+                REALLOG(logger, "workers[%d] sent msg{%.*s} to %s:%d", g_workerid, len - 1, msg, conns[fd].ip, conns[fd].port);
                 if(n <= 0) goto err;
                 if(wtable_over_msg(wtab, g_workerid, fd) < 1)
                 {
@@ -310,7 +321,6 @@ void ev_handler(int fd, int ev_flags, void *arg)
         return ;
 err:
         event_destroy(&(conns[fd].event));
-        REALLOG(logger, "workers[%d] fd:%d apps_num:%d", g_workerid, fd, conns[fd].apps_num);
         wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, conns[fd].apps_num);
 #ifdef HAVE_SSL
         if(conns[fd].ssl)
@@ -323,7 +333,7 @@ err:
         shutdown(fd, SHUT_RDWR);
         close(fd);
         --(wtab->state->conn_total);
-        REALLOG(logger, "conn_total:%d", wtab->state->conn_total);
+        //REALLOG(logger, "conn_total:%d", wtab->state->conn_total);
     }
     return ;
 }

@@ -225,8 +225,9 @@ int wtable_app_auth(WTABLE *w, int wid, char *appkey, int len, int conn_id, int6
         mtree_insert(w->workers[wid].map, appid, conn_id, wid, NULL);
         //REALLOG(w->logger, "workers[%d] app[%.*s][%d][%d] qtotal:%p/%d", wid, len, appkey, appid, conn_id, w->workers[wid].map, mtree_total(w->workers[wid].map, appid));
         mid = mmtree64_max(w->appmap, appid, &time, &msgid);
-        while(mid && time >= last_time && msgid > 0)
+        while(mid && time > last_time && msgid > 0)
         {
+            //REALLOG(w->logger, "workers[%d] time:%lld last_time:%lld msgid:%d", wid, time, last_time, msgid)
             mqueue_push(w->workers[wid].queue,w->workers[wid].q[conn_id],msgid);
             time = 0; msgid = 0;
             mid = mmtree64_prev(w->appmap, appid, mid, &time, &msgid);
@@ -236,12 +237,10 @@ int wtable_app_auth(WTABLE *w, int wid, char *appkey, int len, int conn_id, int6
 }
 
 /* wtable new push msg */
-int wtable_new_msg(WTABLE *w, int appid, char *msg, int len)
+int wtable_new_msg(WTABLE *w, int appid, char *msg, int len, int64_t time)
 {
     int msgid = 0, i = 0;
-    struct timeval tv = {0};
     char buf[W_BUF_SIZE];
-    int64_t now = 0;
     WHEAD *head = (WHEAD *)buf;
 
     if(w && appid > 0 && msg && len > 0)
@@ -251,8 +250,8 @@ int wtable_new_msg(WTABLE *w, int appid, char *msg, int len)
         head->len = len;
         strncpy(buf + sizeof(WHEAD), msg, len);
         db_set_data(w->mdb, msgid, buf, len + sizeof(WHEAD)); 
-        gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
-        mmtree64_try_insert(w->appmap, appid, now, msgid, NULL);
+        //gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
+        mmtree64_try_insert(w->appmap, appid, time, msgid, NULL);
         for(i = 2; i <= w->state->nworkers; i++)
         {
             mqueue_push(w->queue, w->workers[i].msg_qid, msgid);
