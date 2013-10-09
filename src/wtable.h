@@ -56,6 +56,7 @@ typedef struct _WTABLE
     void *queue;/* msg queue*/
     void *logger;
     WSTATE *state; 
+    WORKER *workers;
 }WTABLE;
 WTABLE *wtable_init(char *dir);
 int wtable_set_whitelist(WTABLE *wtab, int ip);

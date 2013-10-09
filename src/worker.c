@@ -50,9 +50,9 @@ typedef struct _CONN
     int workerid;
     int keepalive;
     ushort port;
-    ushort bit;
-    char ip[16];
+    ushort apps_num;
     int apps[CONN_APP_MAX];
+    char ip[16];
 #ifdef HAVE_SSL
     SSL *ssl;
 #endif
@@ -257,13 +257,10 @@ void ev_handler(int fd, int ev_flags, void *arg)
                                 REALLOG(logger, "WARN!!! unknown appkey[%.*s] from conn[%s:%d] via %d", s - xs, xs, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
                             }
-                            for(i = 0; i < CONN_APP_MAX; i++)
+                            if((i = conns[fd].apps_num) < CONN_APP_MAX)
                             {
-                                if(conns[fd].apps[i] == 0)
-                                {
-                                    conns[fd].apps[i] = appid;
-                                    break;
-                                }
+                                conns[fd].apps[i] = appid;
+                                conns[fd].apps_num++;
                             }
                             event_add(&(conns[fd].event), E_WRITE);
                             *s = '"';
@@ -308,7 +305,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
         return ;
 err:
         event_destroy(&(conns[fd].event));
-        wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, CONN_APP_MAX);
+        wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, conns[fd].apps_num);
 #ifdef HAVE_SSL
         if(conns[fd].ssl)
         {   SSL_shutdown(conns[fd].ssl);
@@ -320,6 +317,7 @@ err:
         shutdown(fd, SHUT_RDWR);
         close(fd);
         --(wtab->state->conn_total);
+        REALLOG(logger, "conn_total:%d", wtab->state->conn_total);
     }
     return ;
 }

@@ -31,208 +31,210 @@ WTABLE *wtable_init(char *dir)
 {
     char path[WT_PATH_MAX], *p = NULL;
     struct stat st = {0};
+    WTABLE *w = NULL;
     int n = 0;
 
-    WTABLE *wtab = NULL;
-    if(dir && (wtab = (WTABLE *)xmm_mnew(sizeof(WTABLE))))
+    if(dir && (w = (WTABLE *)xmm_mnew(sizeof(WTABLE))))
     {
         n = sprintf(path, "%s/%s", dir, WT_LOG_NAME);
         force_mkdir(path);
         p = path;
-        LOGGER_INIT(wtab->logger, p);
+        LOGGER_INIT(w->logger, p);
         /* state */
         n = sprintf(path, "%s/%s", dir, WT_STATE_NAME);
-        if((wtab->statefd = open(path, O_CREAT|O_RDWR, 0644)) <= 0
-                || fstat(wtab->statefd, &st) != 0)
+        if((w->statefd = open(path, O_CREAT|O_RDWR, 0644)) <= 0
+                || fstat(w->statefd, &st) != 0)
         {
-            if(wtab->statefd > 0) close(wtab->statefd);
-            FATAL_LOGGER(wtab->logger, "open state file[%s] failed, %s",
+            if(w->statefd > 0) close(w->statefd);
+            FATAL_LOGGER(w->logger, "open state file[%s] failed, %s",
                     path, strerror(errno));
             _exit(-1);
         }
         else
         {
             if(st.st_size < sizeof(WSTATE)
-                    && ftruncate(wtab->statefd, sizeof(WSTATE)) != 0)
+                    && ftruncate(w->statefd, sizeof(WSTATE)) != 0)
             {
                 _exit(-1);
             }
-            if((wtab->state = (WSTATE *)mmap(NULL, sizeof(WSTATE),
-                            PROT_READ|PROT_WRITE, MAP_SHARED, wtab->statefd, 0)) == NULL
-                    || wtab->state == (void *)-1)
+            if((w->state = (WSTATE *)mmap(NULL, sizeof(WSTATE),
+                            PROT_READ|PROT_WRITE, MAP_SHARED, w->statefd, 0)) == NULL
+                    || w->state == (void *)-1)
             {
-                FATAL_LOGGER(wtab->logger, "mmap state failed, %s", strerror(errno));
+                FATAL_LOGGER(w->logger, "mmap state failed, %s", strerror(errno));
                 _exit(-1);
             }
             if(st.st_size < sizeof(WSTATE))
-                memset(((char *)wtab->state + st.st_size), 0, sizeof(WSTATE) - st.st_size);
+                memset(((char *)w->state + st.st_size), 0, sizeof(WSTATE) - st.st_size);
         }
-        memset(wtab->state->workers, 0, sizeof(WORKER) * W_WORKER_MAX);
-        wtab->state->nworkers = 0;
-        wtab->state->conn_total = 0;
+        w->workers = w->state->workers;
+        memset(w->workers, 0, sizeof(WORKER) * W_WORKER_MAX);
+        w->state->nworkers = 0;
+        w->state->conn_total = 0;
         n = sprintf(path, "%s/%s", dir, WT_MDB_DIR);
-        wtab->mdb = db_init(path, DB_USE_MMAP);
+        w->mdb = db_init(path, DB_USE_MMAP);
         /* mmtrie */
         n = sprintf(path, "%s/%s", dir, WT_MAP_NAME);
-        if((wtab->map = mmtrie_init(path)) == NULL) _exit(-1);
+        if((w->map = mmtrie_init(path)) == NULL) _exit(-1);
         /* appmap */
         n = sprintf(path, "%s/%s", dir, WT_APPMAP_NAME);
-        if((wtab->appmap = mmtree64_init(path)) == NULL) _exit(-1);
-        mmtree64_use_all(wtab->appmap);
+        if((w->appmap = mmtree64_init(path)) == NULL) _exit(-1);
+        mmtree64_use_all(w->appmap);
         /* logger & mutex & mtree & mqueue */
-        if((wtab->queue = mqueue_init()) == NULL) _exit(-1);
-        if((wtab->mtree = mtree_init()) == NULL) _exit(-1);
-        wtab->whitelist = mtree_new_tree(wtab->mtree);
-        //MQ(wtab->queue)->logger = wtab->logger;
-        MUTEX_INIT(wtab->mutex);
+        if((w->queue = mqueue_init()) == NULL) _exit(-1);
+        if((w->mtree = mtree_init()) == NULL) _exit(-1);
+        w->whitelist = mtree_new_tree(w->mtree);
+        //MQ(w->queue)->logger = w->logger;
+        MUTEX_INIT(w->mutex);
     }
-    return wtab;
+    return w;
 }
 
 /* add whitelist ip*/
-int wtable_set_whitelist(WTABLE *wtab, int ip)
+int wtable_set_whitelist(WTABLE *w, int ip)
 {
     int ret = -1;
-    if(wtab && ip)
+    if(w && ip)
     {
-        ret = mtree_try_insert(wtab->mtree, wtab->whitelist, (int64_t)ip, ip, NULL);
+        ret = mtree_try_insert(w->mtree, w->whitelist, (int64_t)ip, ip, NULL);
     }
     return ret;
 }
 
 /* check whitelist */
-int wtable_check_whitelist(WTABLE *wtab, int ip)
+int wtable_check_whitelist(WTABLE *w, int ip)
 {
     int ret = -1;
-    if(wtab && ip)
+    if(w && ip)
     {
-        ret = mtree_find(wtab->mtree, wtab->whitelist, (int64_t)ip, NULL);
+        ret = mtree_find(w->mtree, w->whitelist, (int64_t)ip, NULL);
     }
     return ret;
 }
 
 /* worker  init */
-int wtable_worker_init(WTABLE *wtab, int workerid, int64_t childid, int status)
+int wtable_worker_init(WTABLE *w, int wid, int64_t childid, int status)
 {
-    if(wtab && workerid > 0 && workerid < W_WORKER_MAX && childid)
+    if(w && wid > 0 && wid < W_WORKER_MAX && childid)
     {
-        memset(&(wtab->state->workers[workerid]), 0, sizeof(WORKER));
-        wtab->state->workers[workerid].msg_qid = mqueue_new(wtab->queue);
-        wtab->state->workers[workerid].task_qid = mqueue_new(wtab->queue);
-        wtab->state->workers[workerid].childid = childid;
-        wtab->state->workers[workerid].running = status;
-        if(workerid > 1) 
+        memset(&(w->workers[wid]), 0, sizeof(WORKER));
+        w->workers[wid].msg_qid = mqueue_new(w->queue);
+        w->workers[wid].task_qid = mqueue_new(w->queue);
+        w->workers[wid].childid = childid;
+        w->workers[wid].running = status;
+        if(wid > 1) 
         {
-            wtab->state->workers[workerid].queue = mqueue_init();
-            wtab->state->workers[workerid].map = mtree_init();
-            mtree_reuse_all(wtab->state->workers[workerid].map);
+            w->workers[wid].queue = mqueue_init();
+            w->workers[wid].map = mtree_init();
+            mtree_reuse_all(w->workers[wid].map);
         }
-        MUTEX_INIT(wtab->state->workers[workerid].mmlock);
-        DEBUG_LOGGER(wtab->logger, "init workers[%d] msg_qid[%d]",workerid,wtab->state->workers[workerid].msg_qid);
+        MUTEX_INIT(w->workers[wid].mmlock);
+        DEBUG_LOGGER(w->logger, "init workers[%d] msg_qid[%d]",wid,w->workers[wid].msg_qid);
     }
     return 0;
 }
 
 /* new connection */
-int wtable_newconn(WTABLE *wtab, int wid, int id)
+int wtable_newconn(WTABLE *w, int wid, int id)
 {
     int ret = -1;
 
-    if(wtab && wid > 0 && id > 0 && id < W_CONN_MAX)
+    if(w && wid > 0 && id > 0 && id < W_CONN_MAX)
     {
-        ret = wtab->state->workers[wid].q[id] = mqueue_new(wtab->state->workers[wid].queue);
+        ret = w->workers[wid].q[id] = mqueue_new(w->workers[wid].queue);
     }
     return ret;
 }
 
 /* end connection */
-int wtable_endconn(WTABLE *wtab, int wid, int id, int *apps, int apps_num)
+int wtable_endconn(WTABLE *w, int wid, int id, int *apps, int apps_num)
 {
     int ret = -1, i = 0, appid = 0, mid = 0;
     WORKER *workers = NULL;
 
-    if(wtab && wid > 0 && id > 0 && id < W_CONN_MAX && apps 
-            && (workers = wtab->state->workers) )
+    if(w && wid > 0 && id > 0 && id < W_CONN_MAX && apps 
+            && (workers = w->workers) )
     {
         for(i = 0; i < apps_num; i++)
         {
             if((appid = apps[i]) > 0 && (mid = (int)mtree_find(workers[wid].map,appid,id,NULL))>0) 
             {
                 mtree_remove(workers[wid].map,appid,mid,NULL,NULL);
-                REALLOG(wtab->logger, "app:%d left:%d", appid, mtree_total(workers[wid].map,appid));
+                REALLOG(w->logger, "app:%d left:%d", appid, mtree_total(workers[wid].map,appid));
             }
         }
-        ret = mqueue_close(wtab->state->workers[wid].queue, wtab->state->workers[wid].q[id]);
-        wtab->state->workers[wid].q[id] = 0;
+        REALLOG(w->logger, "conn[%d] apps:%d", id, mqueue_total(workers[wid].queue, workers[wid].q[id]));
+        ret = mqueue_close(workers[wid].queue, workers[wid].q[id]);
+        w->workers[wid].q[id] = 0;
     }
     return ret;
 }
 
 /* push new taskid */
-int wtable_new_task(WTABLE *wtab, int workerid, int taskid)
+int wtable_new_task(WTABLE *w, int wid, int taskid)
 {
     int ret = 0;
 
-    if(wtab && workerid > 0 && workerid < W_WORKER_MAX)
+    if(w && wid > 0 && wid < W_WORKER_MAX)
     {
-        mqueue_push(wtab->queue, wtab->state->workers[workerid].task_qid, taskid);
-        MUTEX_SIGNAL(wtab->state->workers[workerid].mmlock);
+        mqueue_push(w->queue, w->workers[wid].task_qid, taskid);
+        MUTEX_SIGNAL(w->workers[wid].mmlock);
     }
     return ret;
 }
 
 /* get first taskid */
-int wtable_pop_task(WTABLE *wtab, int workerid)
+int wtable_pop_task(WTABLE *w, int wid)
 {
     int ret = -1;
 
-    if(wtab && workerid > 0 && workerid < W_WORKER_MAX)
+    if(w && wid > 0 && wid < W_WORKER_MAX)
     {
-        mqueue_pop(wtab->queue, wtab->state->workers[workerid].task_qid, &ret);
+        mqueue_pop(w->queue, w->workers[wid].task_qid, &ret);
     }
     return ret;
 }
 
 /* wtable new app */
-int wtable_appid(WTABLE *wtab, char *appkey, int len)
+int wtable_appid(WTABLE *w, char *appkey, int len)
 {
     int appid = -1;
-    if(wtab && appkey && len > 0)
+    if(w && appkey && len > 0)
     {
-        MUTEX_LOCK(wtab->mutex);
-        appid = mmtrie_xadd(wtab->map, appkey, len);
-        if(appid > wtab->state->app_id_max)
+        MUTEX_LOCK(w->mutex);
+        appid = mmtrie_xadd(w->map, appkey, len);
+        if(appid > w->state->app_id_max)
         {
-            wtab->state->app_id_max = appid;
+            w->state->app_id_max = appid;
         }
-        MUTEX_UNLOCK(wtab->mutex);
+        MUTEX_UNLOCK(w->mutex);
     }
     return appid;
 }
 
 /* wtable app auth */
-int wtable_app_auth(WTABLE *wtab, int wid, char *appkey, int len, int conn_id, int64_t last_time)
+int wtable_app_auth(WTABLE *w, int wid, char *appkey, int len, int conn_id, int64_t last_time)
 {
     int mid = 0, msgid = 0, appid = 0;
     int64_t time = 0;
 
-    if(wtab && appkey && len > 0 && (appid = mmtrie_get(wtab->map, appkey, len)) > 0)     
+    if(w && appkey && len > 0 && (appid = mmtrie_get(w->map, appkey, len)) > 0)     
     {
-        mtree_insert(wtab->state->workers[wid].map, appid, conn_id, wid, NULL);
-        REALLOG(wtab->logger, "workers[%d] app[%.*s][%d] qtotal:%p/%d", wid, len, appkey, appid, wtab->state->workers[wid].map, mtree_total(wtab->state->workers[wid].map, appid));
-        mid = mmtree64_max(wtab->appmap, appid, &time, &msgid);
+        mtree_insert(w->workers[wid].map, appid, conn_id, wid, NULL);
+        REALLOG(w->logger, "workers[%d] app[%.*s][%d] qtotal:%p/%d", wid, len, appkey, appid, w->workers[wid].map, mtree_total(w->workers[wid].map, appid));
+        mid = mmtree64_max(w->appmap, appid, &time, &msgid);
         while(mid && time >= last_time && msgid > 0)
         {
-            mqueue_push(wtab->state->workers[wid].queue,wtab->state->workers[wid].q[conn_id],msgid);
+            mqueue_push(w->workers[wid].queue,w->workers[wid].q[conn_id],msgid);
             time = 0; msgid = 0;
-            mid = mmtree64_prev(wtab->appmap, appid, mid, &time, &msgid);
+            mid = mmtree64_prev(w->appmap, appid, mid, &time, &msgid);
         }
     }
     return appid;
 }
 
 /* wtable new push msg */
-int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len)
+int wtable_new_msg(WTABLE *w, int appid, char *msg, int len)
 {
     int msgid = 0, i = 0;
     struct timeval tv = {0};
@@ -240,35 +242,35 @@ int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len)
     int64_t now = 0;
     WHEAD *head = (WHEAD *)buf;
 
-    if(wtab && appid > 0 && msg && len > 0)
+    if(w && appid > 0 && msg && len > 0)
     {
-        msgid = ++(wtab->state->msg_id_max);
+        msgid = ++(w->state->msg_id_max);
         head->mix = appid;
         head->len = len;
         strncpy(buf + sizeof(WHEAD), msg, len);
-        db_set_data(wtab->mdb, msgid, buf, len + sizeof(WHEAD)); 
+        db_set_data(w->mdb, msgid, buf, len + sizeof(WHEAD)); 
         gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
-        mmtree64_try_insert(wtab->appmap, appid, now, msgid, NULL);
-        for(i = 2; i <= wtab->state->nworkers; i++)
+        mmtree64_try_insert(w->appmap, appid, now, msgid, NULL);
+        for(i = 2; i <= w->state->nworkers; i++)
         {
-            mqueue_push(wtab->queue, wtab->state->workers[i].msg_qid, msgid);
+            mqueue_push(w->queue, w->workers[i].msg_qid, msgid);
         }
-        REALLOG(wtab->logger, "new-msg[%.*s] for appid:%d", len, msg, appid);
+        REALLOG(w->logger, "new-msg[%.*s] for appid:%d", len, msg, appid);
     }
     return msgid;
 }
 
 /* get msg info */
-int wtable_get_msg(WTABLE *wtab, int wid, int conn_id, char **msg)
+int wtable_get_msg(WTABLE *w, int wid, int conn_id, char **msg)
 {
     int ret = -1, msgid = 0;
     WHEAD *head = NULL;
 
-    if(wtab && wid > 0 && conn_id > 0 && conn_id < W_CONN_MAX && msg)
+    if(w && wid > 0 && conn_id > 0 && conn_id < W_CONN_MAX && msg)
     {
-        if(mqueue_head(wtab->state->workers[wid].queue, wtab->state->workers[wid].q[conn_id], &msgid) > 0)
+        if(mqueue_head(w->workers[wid].queue, w->workers[wid].q[conn_id], &msgid) > 0)
         {
-            ret = db_exists_block(wtab->mdb, msgid, (char **)&head) - sizeof(WHEAD);
+            ret = db_exists_block(w->mdb, msgid, (char **)&head) - sizeof(WHEAD);
             if(ret) *msg = (char *)head + sizeof(WHEAD);
         }
     }
@@ -276,56 +278,56 @@ int wtable_get_msg(WTABLE *wtab, int wid, int conn_id, char **msg)
 }
 
 /* over msg */
-int wtable_over_msg(WTABLE *wtab, int wid, int conn_id)
+int wtable_over_msg(WTABLE *w, int wid, int conn_id)
 {
     int ret = -1;
 
-    if(wtab && wid > 0 && conn_id > 0 && conn_id < W_CONN_MAX)
+    if(w && wid > 0 && conn_id > 0 && conn_id < W_CONN_MAX)
     {
-        mqueue_pop(wtab->state->workers[wid].queue, wtab->state->workers[wid].q[conn_id], NULL);
-        ret = mqueue_total(wtab->state->workers[wid].queue, wtab->state->workers[wid].q[conn_id]);
+        mqueue_pop(w->workers[wid].queue, w->workers[wid].q[conn_id], NULL);
+        ret = mqueue_total(w->workers[wid].queue, w->workers[wid].q[conn_id]);
     }
     return ret;
 }
 
-int wtable_stop(WTABLE *wtab)
+int wtable_stop(WTABLE *w)
 {
     int ret = -1, i = 0;
 
-    if(wtab) 
+    if(w) 
     {
-        DEBUG_LOGGER(wtab->logger, "ready for stopping %d workers", wtab->state->nworkers);
-        for(i = 1; i <= wtab->state->nworkers; i++)
+        DEBUG_LOGGER(w->logger, "ready for stopping %d workers", w->state->nworkers);
+        for(i = 1; i <= w->state->nworkers; i++)
         {
-            if(wtab->state->workers[i].running == W_RUN_WORKING)
+            if(w->workers[i].running == W_RUN_WORKING)
             {
-                DEBUG_LOGGER(wtab->logger, "stopping workers[%d] => %d", i, wtab->state->workers[i].childid);
-                wtab->state->workers[i].running = W_RUN_STOP;
-                wtable_new_task(wtab, i, W_CMD_STOP);
+                DEBUG_LOGGER(w->logger, "stopping workers[%d] => %d", i, w->workers[i].childid);
+                w->workers[i].running = W_RUN_STOP;
+                wtable_new_task(w, i, W_CMD_STOP);
 #ifdef USE_PTHREAD
-        pthread_join((pthread_t)(wtab->state->workers[i].childid), NULL);
+        pthread_join((pthread_t)(w->workers[i].childid), NULL);
 #else
-        waitpid((pid_t)wtab->state->workers[i].childid, NULL, 0);
+        waitpid((pid_t)w->workers[i].childid, NULL, 0);
 #endif
-                DEBUG_LOGGER(wtab->logger, "stop workers[%d] => %d", i, wtab->state->workers[i].childid);
+                DEBUG_LOGGER(w->logger, "stop workers[%d] => %d", i, w->workers[i].childid);
             }
         }
-        DEBUG_LOGGER(wtab->logger, "stop %d workers", wtab->state->nworkers);
+        DEBUG_LOGGER(w->logger, "stop %d workers", w->state->nworkers);
         ret = 0;
     }
     return ret;
 }
 
 /* worker  terminate */
-int wtable_worker_terminate(WTABLE *wtab, int workerid)
+int wtable_worker_terminate(WTABLE *w, int wid)
 {
-    if(wtab && workerid >= 0)
+    if(w && wid >= 0)
     {
-        DEBUG_LOGGER(wtab->logger, "terminate workers[%d] childid:%lld", workerid, wtab->state->workers[workerid].childid);
-        MUTEX_DESTROY(wtab->state->workers[workerid].mmlock);
-        mqueue_clean(wtab->state->workers[workerid].queue);
-        mtree_close(wtab->state->workers[workerid].map);
-        memset(&(wtab->state->workers[workerid]), 0, sizeof(WORKER));
+        DEBUG_LOGGER(w->logger, "terminate workers[%d] childid:%lld", wid, w->workers[wid].childid);
+        MUTEX_DESTROY(w->workers[wid].mmlock);
+        mqueue_clean(w->workers[wid].queue);
+        mtree_close(w->workers[wid].map);
+        memset(&(w->workers[wid]), 0, sizeof(WORKER));
     }
     return 0;
 }
@@ -333,32 +335,32 @@ int wtable_worker_terminate(WTABLE *wtab, int workerid)
 /*
  * close/clean wtable
  * */
-void wtable_close(WTABLE *wtab)
+void wtable_close(WTABLE *w)
 {
-    if(wtab)
+    if(w)
     {
-        if(wtab->statefd > 0) close(wtab->statefd);
-        wtab->statefd = 0;
-        if(wtab->state) munmap(wtab->state, sizeof(WSTATE));
-        wtab->state = NULL;
-        db_clean(wtab->mdb);
-        mqueue_clean(MQ(wtab->queue));
-        mmtrie_clean(wtab->map);
-        mtree_close(wtab->mtree);
-        mmtree64_close(wtab->appmap);
-        LOGGER_CLEAN(wtab->logger);
-        xmm_free(wtab, sizeof(WTABLE));
+        if(w->statefd > 0) close(w->statefd);
+        w->statefd = 0;
+        if(w->state) munmap(w->state, sizeof(WSTATE));
+        w->state = NULL;
+        db_clean(w->mdb);
+        mqueue_clean(MQ(w->queue));
+        mmtrie_clean(w->map);
+        mtree_close(w->mtree);
+        mmtree64_close(w->appmap);
+        LOGGER_CLEAN(w->logger);
+        xmm_free(w, sizeof(WTABLE));
     }
     return ;
 }
 
 #ifdef __DEBUG__WTABLE
-// gcc -o wtab wtable.c -I utils/ utils/*.c -g -D__DEBUG__WTABLE && ./wtab
+// gcc -o w wtable.c -I utils/ utils/*.c -g -D__DEBUG__WTABLE && ./wtab
 int main(int argc, char **argv)
 {
-    WTABLE *wtab = NULL;
+    WTABLE *w = NULL;
 
-    if((wtab = wtable_init("/data/wtab")))
+    if((w = wtable_init("/data/wtab")))
     {
         wtable_close(wtab);
     }
