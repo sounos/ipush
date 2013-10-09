@@ -36,19 +36,19 @@ PushService for push.parse.com
 %post
 
 /sbin/ldconfig
-/usr/sbin/useradd -M -s /sbin/nologin ipush
+[ "`grep ipush /etc/passwd`" ] || /usr/sbin/useradd -M -s /sbin/nologin ipush
 /sbin/chkconfig --add ipushd && /sbin/chkconfig --level 345 ipushd on
 
 %preun
 
 [ "`pstree|grep ipushd|wc -l`" -gt "0" ] && /sbin/service ipushd stop
 /sbin/chkconfig --del ipush
-/usr/sbin/userdel ipush
+[ "`grep ipush /etc/passwd`" ]  && /usr/sbin/userdel ipush
 
 %files
 %defattr(-, root, root, 0755)
-%{_bindir}/*
 %{_sbindir}/*
+%{_bindir}/*
 %{_sysconfdir}/rc.d/*
 %config(noreplace) %{_sysconfdir}/*.ini
 
