@@ -7,4 +7,5 @@ int force_mkdir(char *path);
 int setrlimiter(char *name, int rlimit, int nset);
 /* strtime to int64 */
 int64_t strtotime64(char *strtime);
+int64_t nowtotime64();
 #endif

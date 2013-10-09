@@ -186,6 +186,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
             if(n <= 0) goto err;
             line[n] = 0;
             ss = s = line;
+            REALLOG(logger, "read %d bytes from %s:%d via %d", n, conns[fd].ip, conns[fd].port, fd);
             while((p = strchr(ss, '\n')))
             {
                 REALLOG(logger, "%.*s conn[%s:%d] via %d", p - ss, ss, conns[fd].ip, conns[fd].port, fd);
@@ -233,16 +234,20 @@ void ev_handler(int fd, int ev_flags, void *arg)
                         goto err;
                     }
                 }
-                else if(strncmp(s, "{\"last\":\"", 9) == 0)
+                else if(strncmp(s, "{\"last\":", 8) == 0)
                 {
-                    s += 9;
-                    xs = s;
-                    while(*s != '\0' && *s != '"') ++s;
+                    s += 8;
+                    last = nowtotime64();
                     if(*s == '"')
                     {
-                        *s = '\0';
-                        last = strtotime64(s);
-                        *s = '"';
+                        xs = ++s;
+                        while(*s != '\0' && *s != '"') ++s;
+                        if(*s == '"')
+                        {
+                            *s = '\0';
+                            last = strtotime64(s);
+                            *s = '"';
+                        }
                     }
                     if((s = strstr(s, "\"oauth_key\":\"")))
                     {/* auth key  */

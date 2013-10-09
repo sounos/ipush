@@ -90,3 +90,11 @@ int64_t strtotime64(char *strtime)
     }
     return times;
 }
+
+int64_t nowtotime64()
+{
+    int64_t now = 0;
+    struct timeval tv = {0};
+    gettimeofday(&tv, NULL);now = (int64_t)tv.tv_sec * 1000000 + (int64_t)tv.tv_usec;
+    return now;
+}
