@@ -70,7 +70,7 @@ int wtable_new_msg(WTABLE *wtab, int appid, char *msg, int len);
 int wtable_get_msg(WTABLE *wtab, int workerid, int conn_id, char **block);
 int wtable_over_msg(WTABLE *wtab, int wid, int conn_id);
 int wtable_newconn(WTABLE *wtab, int wid, int id);
-int wtable_endconn(WTABLE *wtab, int wid, int id);
+int wtable_endconn(WTABLE *wtab, int wid, int id, int *apps, int apps_num);
 int wtable_stop(WTABLE *wtab);
 int wtable_worker_terminate(WTABLE *wtab, int workerid);
 void wtable_close(WTABLE *wtab);

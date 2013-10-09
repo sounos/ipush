@@ -43,6 +43,7 @@ static LOGGER *logger = NULL;
 #define CONN_MAX    65536
 #define CONN_BACKLOG_MAX 8192
 #define EV_BUF_SIZE 65536
+#define CONN_APP_MAX 32
 typedef struct _CONN
 {
     int status;
@@ -51,6 +52,7 @@ typedef struct _CONN
     ushort port;
     ushort bit;
     char ip[16];
+    int apps[CONN_APP_MAX];
 #ifdef HAVE_SSL
     SSL *ssl;
 #endif
@@ -113,7 +115,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
     char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL, *msg = NULL;
-    int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0;
+    int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0, i = 0;
     int64_t last = 0;
 
     if(fd == listenfd)
@@ -255,6 +257,14 @@ void ev_handler(int fd, int ev_flags, void *arg)
                                 REALLOG(logger, "WARN!!! unknown appkey[%.*s] from conn[%s:%d] via %d", s - xs, xs, conns[fd].ip, conns[fd].port, fd)
                                 goto err;
                             }
+                            for(i = 0; i < CONN_APP_MAX; i++)
+                            {
+                                if(conns[fd].apps[i] == 0)
+                                {
+                                    conns[fd].apps[i] = appid;
+                                    break;
+                                }
+                            }
                             event_add(&(conns[fd].event), E_WRITE);
                             *s = '"';
                         }
@@ -298,7 +308,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
         return ;
 err:
         event_destroy(&(conns[fd].event));
-        wtable_endconn(wtab, g_workerid, fd);
+        wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, CONN_APP_MAX);
 #ifdef HAVE_SSL
         if(conns[fd].ssl)
         {   SSL_shutdown(conns[fd].ssl);

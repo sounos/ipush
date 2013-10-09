@@ -146,12 +146,22 @@ int wtable_newconn(WTABLE *wtab, int wid, int id)
 }
 
 /* end connection */
-int wtable_endconn(WTABLE *wtab, int wid, int id)
+int wtable_endconn(WTABLE *wtab, int wid, int id, int *apps, int apps_num)
 {
-    int ret = -1;
+    int ret = -1, i = 0, appid = 0, mid = 0;
+    WORKER *workers = NULL;
 
-    if(wtab && wid > 0 && id > 0 && id < W_CONN_MAX)
+    if(wtab && wid > 0 && id > 0 && id < W_CONN_MAX && apps 
+            && (workers = wtab->state->workers) )
     {
+        for(i = 0; i < apps_num; i++)
+        {
+            if((appid = apps[i]) > 0 && (mid = (int)mtree_find(workers[wid].map,appid,id,NULL))>0) 
+            {
+                mtree_remove(workers[wid].map,appid,mid,NULL,NULL);
+                REALLOG(wtab->logger, "app:%d left:%d", appid, mtree_total(workers[wid].map,appid));
+            }
+        }
         ret = mqueue_close(wtab->state->workers[wid].queue, wtab->state->workers[wid].q[id]);
         wtab->state->workers[wid].q[id] = 0;
     }
