@@ -143,7 +143,7 @@ int setrlimiter(char *name, int rlimit, int nset)
 
 int new_request()
 {
-    int fd = 0, flag = 0, n = 0, opt = 1, prot = 0;
+    int fd = 0, flag = 0, opt = 1, prot = 0;
     struct sockaddr_in  lsa;
     socklen_t lsa_len = sizeof(struct sockaddr);
 
@@ -291,8 +291,7 @@ err:
 /* sock stream/TCP handler */
 void ev_handler(int fd, int ev_flags, void *arg)
 {
-    char *p = NULL, *s = NULL, *ks = "Content-Length:";
-    int n = 0, x = 0;
+    int n = 0;
 
     if(ev_flags & E_READ)
     {
