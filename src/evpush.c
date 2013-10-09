@@ -109,7 +109,7 @@ static char *_ymonths[]= {
 #define SHOW_LOG(format...)								\
 {											\
 	LOG_HEADER(stdout);                                                             \
-        fprintf(stdout, "\"DEBUG:");                                                    \
+        fprintf(stdout, "\"");                                                    \
         fprintf(stdout, format);                                                        \
         fprintf(stdout, "\"\n");                                                        \
 	fflush(stdout);									\
@@ -298,19 +298,18 @@ void ev_handler(int fd, int ev_flags, void *arg)
         if(is_use_SSL)
         {
 #ifdef HAVE_SSL
-            n = SSL_read(conns[fd].ssl, conns[fd].response+conns[fd].nresp, EV_BUF_SIZE - conns[fd].nresp);
+            n = SSL_read(conns[fd].ssl, conns[fd].response, EV_BUF_SIZE);
 #else
-            n = read(fd, conns[fd].response+conns[fd].nresp, EV_BUF_SIZE - conns[fd].nresp);
+            n = read(fd, conns[fd].response, EV_BUF_SIZE);
 #endif
         }
         else
         {
-            n = read(fd, conns[fd].response+conns[fd].nresp, EV_BUF_SIZE - conns[fd].nresp);
+            n = read(fd, conns[fd].response, EV_BUF_SIZE);
         }
         if(n > 0 )
         {
-            conns[fd].response[conns[fd].nresp] = 0;
-            conns[fd].nresp += n;
+            conns[fd].response[n] = 0;
             SHOW_LOG("Read %d bytes from %d", n, fd);
             SHOW_LOG("%s", conns[fd].response);
             conns[fd].nresp = 0;

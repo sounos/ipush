@@ -96,7 +96,7 @@ int wtable_set_whitelist(WTABLE *w, int ip)
     int ret = -1;
     if(w && ip)
     {
-        ret = mtree_try_insert(w->mtree, w->whitelist, (int64_t)ip, ip, NULL);
+        ret = mtree_try_insert(w->mtree, w->whitelist, ip, ip, NULL);
     }
     return ret;
 }
@@ -107,7 +107,7 @@ int wtable_check_whitelist(WTABLE *w, int ip)
     int ret = -1;
     if(w && ip)
     {
-        ret = mtree_find(w->mtree, w->whitelist, (int64_t)ip, NULL);
+        ret = mtree_find(w->mtree, w->whitelist, ip, NULL);
     }
     return ret;
 }
@@ -142,6 +142,7 @@ int wtable_newconn(WTABLE *w, int wid, int id)
     if(w && wid > 0 && id > 0 && id < W_CONN_MAX)
     {
         ret = w->workers[wid].q[id] = mqueue_new(w->workers[wid].queue);
+        //REALLOG(w->logger, "workers[%d] new-conn:%d", wid, id);
     }
     return ret;
 }
@@ -157,13 +158,14 @@ int wtable_endconn(WTABLE *w, int wid, int id, int *apps, int apps_num)
     {
         for(i = 0; i < apps_num; i++)
         {
-            if((appid = apps[i]) > 0 && (mid = (int)mtree_find(workers[wid].map,appid,id,NULL))>0) 
+            if((appid = apps[i]) > 0)
             {
-                mtree_remove(workers[wid].map,appid,mid,NULL,NULL);
-                REALLOG(w->logger, "app:%d left:%d", appid, mtree_total(workers[wid].map,appid));
+                if((mid = mtree_find(workers[wid].map,appid,id,NULL))>0) 
+                    mtree_remove(workers[wid].map,appid,mid,NULL,NULL);
+                //REALLOG(w->logger, "app:%d left:%d mid:%d conn:%d", appid, mtree_total(workers[wid].map,appid), mid, id);
             }
         }
-        REALLOG(w->logger, "conn[%d] apps:%d", id, mqueue_total(workers[wid].queue, workers[wid].q[id]));
+        //REALLOG(w->logger, "conn[%d] apps:%d", id, mqueue_total(workers[wid].queue, workers[wid].q[id]));
         ret = mqueue_close(workers[wid].queue, workers[wid].q[id]);
         w->workers[wid].q[id] = 0;
     }
@@ -221,7 +223,7 @@ int wtable_app_auth(WTABLE *w, int wid, char *appkey, int len, int conn_id, int6
     if(w && appkey && len > 0 && (appid = mmtrie_get(w->map, appkey, len)) > 0)     
     {
         mtree_insert(w->workers[wid].map, appid, conn_id, wid, NULL);
-        REALLOG(w->logger, "workers[%d] app[%.*s][%d] qtotal:%p/%d", wid, len, appkey, appid, w->workers[wid].map, mtree_total(w->workers[wid].map, appid));
+        //REALLOG(w->logger, "workers[%d] app[%.*s][%d][%d] qtotal:%p/%d", wid, len, appkey, appid, conn_id, w->workers[wid].map, mtree_total(w->workers[wid].map, appid));
         mid = mmtree64_max(w->appmap, appid, &time, &msgid);
         while(mid && time >= last_time && msgid > 0)
         {
@@ -255,7 +257,7 @@ int wtable_new_msg(WTABLE *w, int appid, char *msg, int len)
         {
             mqueue_push(w->queue, w->workers[i].msg_qid, msgid);
         }
-        REALLOG(w->logger, "new-msg[%.*s] for appid:%d", len, msg, appid);
+        //REALLOG(w->logger, "new-msg[%.*s] for appid:%d", len, msg, appid);
     }
     return msgid;
 }

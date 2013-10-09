@@ -898,7 +898,7 @@ color_remove:
 /* remove node */
 void mtree64_remove_tnode(void *x, unsigned int tnodeid)
 {
-    if(x)
+    if(x && tnodeid > 0)
     {
         if(MT(x)->map[tnodeid].left > 0 && MT(x)->map[tnodeid].left < MT(x)->state->total)
         {

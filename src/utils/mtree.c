@@ -416,6 +416,7 @@ unsigned int mtree_new_node(void *x, int rootid, int nodeid, int key, int data)
                 MT(x)->map[nodeid].left = id;
         }
         MT(x)->state->roots[rootid].total++;
+        //fprintf(stdout, "%s::%d id:%d qleft:%d current:%d\n", __FILE__, __LINE__, id, MT(x)->state->qleft, MT(x)->state->current);
         MUTEX_UNLOCK(MT(x)->mutex);
     }
     return id;
@@ -472,6 +473,7 @@ unsigned int mtree_insert(void *x, int rootid, int key, int data, int *old)
                 MT(x)->state->roots[rootid].rootid = nodeid;
             }
         }
+        //fprintf(stdout, "%s::%d mid:%d rootid:%d/%d\n", __FILE__, __LINE__, id, rootid, MT(x)->state->roots[rootid].rootid);
 end:
         mtree_mutex_unlock(x, rootid);
     }
@@ -566,7 +568,6 @@ unsigned int mtree_find(void *x, int rootid, int key, int *data)
         if(MT(x)->map && MT(x)->state && rootid < MTREE_ROOT_MAX
                 && MT(x)->state->roots[rootid].status > 0)
         {
-            //fprintf(stdout, "%s::%d rootid:%d key:%d data:%d total:%d\n", __FILE__, __LINE__, rootid, key, *data, MT(x)->state->total);
             id = MT(x)->state->roots[rootid].rootid;
             while(id > 0 && id < MT(x)->state->total)
             {
@@ -585,7 +586,7 @@ unsigned int mtree_find(void *x, int rootid, int key, int *data)
                 }
             }
         }
-        //fprintf(stdout, "%s::%d rootid:%d key:%d data:%d\n", __FILE__, __LINE__, rootid, key, *data);
+        //fprintf(stdout, "%s::%d rootid:%d id:%d key:%d data:%p\n", __FILE__, __LINE__, rootid, id, key, data);
         mtree_mutex_unlock(x, rootid);
     }
     return id;
@@ -899,7 +900,7 @@ color_remove:
 /* remove node */
 void mtree_remove_tnode(void *x, unsigned int tnodeid)
 {
-    if(x)
+    if(x && tnodeid > 0)
     {
         if(MT(x)->map[tnodeid].left > 0 && MT(x)->map[tnodeid].left < MT(x)->state->total)
         {

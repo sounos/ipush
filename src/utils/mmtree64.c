@@ -920,7 +920,7 @@ color_remove:
 /* remove node */
 void mmtree64_remove_tnode(void *x, unsigned int tnodeid)
 {
-    if(x)
+    if(x && tnodeid > 0)
     {
         if(MMT(x)->map[tnodeid].left > 0 && MMT(x)->map[tnodeid].left < MMT(x)->state->total)
         {

@@ -305,6 +305,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
         return ;
 err:
         event_destroy(&(conns[fd].event));
+        REALLOG(logger, "workers[%d] fd:%d apps_num:%d", g_workerid, fd, conns[fd].apps_num);
         wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, conns[fd].apps_num);
 #ifdef HAVE_SSL
         if(conns[fd].ssl)
