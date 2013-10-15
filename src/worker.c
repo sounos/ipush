@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -115,7 +116,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
     struct  sockaddr_in rsa;
     socklen_t rsa_len = sizeof(struct sockaddr_in);
     char line[EV_BUF_SIZE], *p = NULL, *s = NULL, *ss = NULL, *xs = NULL, *msg = NULL;
-    int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0, i = 0;
+    int rfd = 0, n = 0, appid = 0, msgid = 0, len = 0, i = 0, opt = 0;
     int64_t time = 0;
 
     if(fd == listenfd)
@@ -124,6 +125,8 @@ void ev_handler(int fd, int ev_flags, void *arg)
         {
             while((rfd = accept(fd, (struct sockaddr *)&rsa, &rsa_len)) > 0)
             {
+                opt = 1;setsockopt(rfd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+                opt = 1;setsockopt(rfd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
                 memset(&(conns[rfd]), 0, sizeof(CONN));
                 strcpy(conns[rfd].ip, inet_ntoa(rsa.sin_addr));
                 conns[rfd].port = ntohs(rsa.sin_port);
