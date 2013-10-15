@@ -19,11 +19,11 @@
 #include "xmm.h"
 #include "common.h"
 #define WT_PATH_MAX         256
-#define WT_LOG_NAME         "worker.log"
-#define WT_STATE_NAME       "worker.state"
+#define WT_LOG_NAME         "wtable.log"
+#define WT_STATE_NAME       "wtable.state"
 #define WT_MDB_DIR          "mdb"
-#define WT_MAP_NAME         "worker.map"
-#define WT_APPMAP_NAME      "worker.appmap"
+#define WT_MAP_NAME         "wtable.map"
+#define WT_APPS_NAME        "wtable.apps"
 /* 
  * initialize wtable 
  * */
@@ -77,7 +77,7 @@ WTABLE *wtable_init(char *dir)
         n = sprintf(path, "%s/%s", dir, WT_MAP_NAME);
         if((w->map = mmtrie_init(path)) == NULL) _exit(-1);
         /* appmap */
-        n = sprintf(path, "%s/%s", dir, WT_APPMAP_NAME);
+        n = sprintf(path, "%s/%s", dir, WT_APPS_NAME);
         if((w->appmap = mmtree64_init(path)) == NULL) _exit(-1);
         mmtree64_use_all(w->appmap);
         /* logger & mutex & mtree & mqueue */
@@ -271,7 +271,7 @@ int wtable_get_msg(WTABLE *w, int wid, int conn_id, char **msg)
     {
         if(mqueue_head(w->workers[wid].queue, w->workers[wid].q[conn_id], &msgid) > 0)
         {
-            ret = db_exists_block(w->mdb, msgid, (char **)&head) - sizeof(WHEAD);
+            ret = db_exists_block(w->mdb, msgid, (char **)(&head)) - sizeof(WHEAD);
             if(ret) *msg = (char *)head + sizeof(WHEAD);
         }
     }

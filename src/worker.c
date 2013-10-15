@@ -111,6 +111,25 @@ void ev_ready_push()
     return ;
 }
 
+void conn_close(int fd)
+{
+    event_destroy(&(conns[fd].event));
+    wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, conns[fd].apps_num);
+#ifdef HAVE_SSL
+    if(conns[fd].ssl)
+    {   SSL_shutdown(conns[fd].ssl);
+        SSL_free(conns[fd].ssl);
+        conns[fd].ssl = NULL;
+    }
+#endif
+    memset(&(conns[fd]), 0, sizeof(CONN));
+    shutdown(fd, SHUT_RDWR);
+    close(fd);
+    --(wtab->state->conn_total);
+    REALLOG(logger, "endconn:%d conn_total:%d", fd, wtab->state->conn_total);
+    return ;
+}
+
 void ev_handler(int fd, int ev_flags, void *arg)
 {
     struct  sockaddr_in rsa;
@@ -286,11 +305,15 @@ void ev_handler(int fd, int ev_flags, void *arg)
                     }
                     else 
                     {
-                        REALLOG(logger, "WARN!!! bad request[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd)
+                        REALLOG(logger, "WARN!!! bad request[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd);
                         goto err;
                     }
                 }
-                else goto err;
+                else 
+                {
+                    REALLOG(logger, "WARN!!! unknown[%s] from conn[%s:%d] via %d", line, conns[fd].ip, conns[fd].port, fd);
+                    goto err;
+                }
                 ss = s = ++p;
             }
         }
@@ -323,20 +346,7 @@ void ev_handler(int fd, int ev_flags, void *arg)
         }
         return ;
 err:
-        event_destroy(&(conns[fd].event));
-        wtable_endconn(wtab, g_workerid, fd, conns[fd].apps, conns[fd].apps_num);
-#ifdef HAVE_SSL
-        if(conns[fd].ssl)
-        {   SSL_shutdown(conns[fd].ssl);
-            SSL_free(conns[fd].ssl);
-            conns[fd].ssl = NULL;
-        }
-#endif
-        memset(&(conns[fd]), 0, sizeof(CONN));
-        shutdown(fd, SHUT_RDWR);
-        close(fd);
-        --(wtab->state->conn_total);
-        //REALLOG(logger, "conn_total:%d", wtab->state->conn_total);
+        conn_close(fd);
     }
     return ;
 }
@@ -345,7 +355,7 @@ err:
 void worker_running(int wid, int listenport)
 {
     WORKER *workers = wtab->state->workers;
-    int opt = 1, taskid = 0;
+    int opt = 1, taskid = 0, i = 0;
     struct sockaddr_in sa;
     socklen_t sa_len = 0;
     pid_t pid = 0;
@@ -434,6 +444,7 @@ stop:
         evbase->clean(evbase);
     }
     close(listenfd);
+    //for(i = 3; i < CONN_MAX; i++){if(conns[i].ip){conn_close(i);}}
     wtable_worker_terminate(wtab, g_workerid);
 #ifdef USE_PTHREAD
     pthread_exit(NULL);
