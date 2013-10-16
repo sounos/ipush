@@ -3,7 +3,7 @@
 Summary: PushService for push.parse.com
 Name: ipush
 Version: 0.0.2
-Release: 1%{?dist}
+Release: 2%{?dist}
 License: BSD
 Group: System Environment/Libraries
 URL: https://github.com/sounos/ipush
@@ -34,16 +34,13 @@ PushService for push.parse.com
 %{__rm} -rf %{buildroot}
 
 %post
-
-/sbin/ldconfig
-[ "`grep ipush /etc/passwd`" ] || /usr/sbin/useradd -M -s /sbin/nologin ipush
-/sbin/chkconfig --add ipushd && /sbin/chkconfig --level 345 ipushd on
+[ "`grep ipush /etc/passwd`" ] || /usr/sbin/useradd -M -s /sbin/nologin ipush && echo ''
+/sbin/chkconfig --add ipushd && /sbin/chkconfig --level 345 ipushd on || echo ''
 
 %preun
-
-[ "`pstree|grep ipushd|wc -l`" -gt "0" ] && /sbin/service ipushd stop
+[ "`pstree|grep ipushd|wc -l`" -gt "0" ] && /sbin/service ipushd stop || echo ''
 /sbin/chkconfig --del ipush
-[ "`grep ipush /etc/passwd`" ]  && /usr/sbin/userdel ipush
+[ "`grep ipush /etc/passwd`" ]  && /usr/sbin/userdel ipush || echo ''
 
 %files
 %defattr(-, root, root, 0755)
